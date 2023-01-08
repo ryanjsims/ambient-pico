@@ -1,29 +1,20 @@
 #pragma once
 
-#include <string>
-#include <functional>
-#include <span>
+#include "tcp_client.h"
+#include "lwip/altcp_tcp.h"
+#include "lwip/altcp_tls.h"
 
-#include "lwip/ip_addr.h"
-#include "lwip/err.h"
-#include "lwip/pbuf.h"
+static struct altcp_tls_config *tls_config = nullptr;
 
-#include "circular_buffer.h"
-#include "logger.h"
-
-#define BUF_SIZE 2048
-#define POLL_TIME_S 2
-
-class tcp_client {
+class tcp_tls_client {
 public:
-    tcp_client();
+    tcp_tls_client();
     bool init();
     int available() const;
     size_t read(std::span<uint8_t> &out);
     bool write(std::span<const uint8_t> data);
-    bool connect(ip_addr_t addr, uint16_t port);
-    bool connect(std::string addr, uint16_t port);
     err_t close();
+    bool connect(std::string host, uint16_t port);
 
     bool ready() const;
     bool initialized() const;
@@ -40,8 +31,8 @@ public:
         user_closed_callback = callback;
     }
 
-protected:
-    struct tcp_pcb *tcp_controlblock;
+private:
+    altcp_pcb *tcp_controlblock;
     ip_addr_t remote_addr;
     circular_buffer<uint8_t> buffer{BUF_SIZE};
     int buffer_len;
@@ -51,12 +42,11 @@ protected:
     std::function<void()> user_receive_callback, user_connected_callback, user_closed_callback;
 
     bool connect();
-
     static void dns_callback(const char* name, const ip_addr_t *addr, void* arg);
-    static err_t poll_callback(void* arg, tcp_pcb* pcb);
-    static err_t sent_callback(void* arg, tcp_pcb* pcb, u16_t len);
-    static err_t recv_callback(void* arg, tcp_pcb* pcb, pbuf* p, err_t err);
+    static err_t connected_callback(void* arg, altcp_pcb* pcb, err_t err);
+    static err_t recv_callback(void* arg, altcp_pcb* pcb, pbuf* p, err_t err);
+    static err_t poll_callback(void* arg, altcp_pcb* pcb);
+    static err_t sent_callback(void* arg, altcp_pcb* pcb, uint16_t len);
     static void tcp_perror(err_t err);
     static void err_callback(void* arg, err_t err);
-    static err_t connected_callback(void* arg, tcp_pcb* pcb, err_t err);
 };
