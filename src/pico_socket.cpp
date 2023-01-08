@@ -5,8 +5,11 @@
 
 #include "lwip/netif.h"
 
+#define LOG_LEVEL LOG_LEVEL_DEBUG
+
 #include "logger.h"
 #include "tcp_client.h"
+#include "http_client.h"
 
 using namespace std::string_view_literals;
 
@@ -30,8 +33,15 @@ void netif_status_callback(netif* netif) {
     info1("    Link ");
     if(netif_is_link_up(netif)) {
         printf("UP\n");
+        cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
     } else {
         printf("DOWN\n");
+        for(int i = 0; i < 3; i++) {
+            cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
+            sleep_ms(100);
+            cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 0);
+            sleep_ms(250);
+        }
     }
     const ip4_addr_t *address = netif_ip4_addr(netif);
     info1("    IP Addr: ");
@@ -50,35 +60,29 @@ int main() {
     sleep_ms(1000);
     info1("Connecting to WiFi...\n");
     netif_set_status_callback(netif_default, netif_status_callback);
-    if (cyw43_arch_wifi_connect_timeout_ms(WIFI_SSID, WIFI_PASSWORD, CYW43_AUTH_WPA2_AES_PSK, 30000)) {
-        error1("failed to connect.\n");
-        for(int i = 0; i < 3; i++) {
-            cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
-            sleep_ms(100);
-            cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 0);
-            sleep_ms(250);
-        }
-        return 1;
-    } else {
+    int err;
+    if (!(err = cyw43_arch_wifi_connect_timeout_ms(WIFI_SSID, WIFI_PASSWORD, CYW43_AUTH_WPA2_AES_PSK, 30000))) {
         info("Connected to %s\n", WIFI_SSID);
-        cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
     }
 
-    tcp_client client("192.168.0.11", 9999);
+    while(!netif_is_link_up(netif_default)){
+        if(err) {
+            error("failed to connect (code %d).\n", err);
+            sleep_ms(1000);
+            err = cyw43_arch_wifi_connect_timeout_ms(WIFI_SSID, WIFI_PASSWORD, CYW43_AUTH_WPA2_AES_PSK, 30000);
+        } 
+    }
 
-    std::string_view view = "test"sv;
-    client.write({reinterpret_cast<const uint8_t*>(view.data()), view.size()});
+    info1("Connecting to ambientweather...\n");
 
-    uint8_t read_buf[512];
-    std::span<uint8_t> data{read_buf, 512};
+    https_client client("rt2.ambientweather.net", 443);
+    client.get("/socket.io/?EIO=4&transport=polling&api=1&applicationKey=" AMBIENT_WEATHER_APP_KEY);
+
     while(true) {
-        if(client.available()) {
-            size_t count = client.read(data);
-            dump_bytes(data.data(), count);
-            for(int i = 0; i < count; i++){
-                printf("%c", data[i]);
-            }
-            printf("\n");
+        sleep_ms(100);
+        if(client.has_response()) {
+            info("Got http response: %d %s\n", client.response().status(), client.response().get_status_text().c_str());
+            info("Body:\n%s\n", client.response().get_body().c_str());
         }
     }
     cyw43_arch_deinit();
