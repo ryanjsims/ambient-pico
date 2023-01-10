@@ -132,7 +132,7 @@ public:
             }
             break;
         default:
-            error1("Shouldn't happen? parse_state == done");
+            error1("Shouldn't happen? parse_state == done\n");
             break;
         }
     }
@@ -275,6 +275,10 @@ public:
         send_request();
     }
 
+    void resend_request() {
+        send_request();
+    }
+
     bool has_response() {
         return response_ready;
     }
@@ -282,6 +286,10 @@ public:
     const http_response &response() {
         response_ready = false;
         return current_response;
+    }
+
+    tcp_tls_client *tcp_client() {
+        return std::move(tcp);
     }
 
 private:
@@ -300,6 +308,9 @@ private:
         if(current_request.body_.size() > 0) {
             current_request.add_header("Content-Length", std::to_string(current_request.body_.size()));
         }
+        current_request.add_header("Upgrade", "websocket");
+        current_request.add_header("Sec-WebSocket-Key", "8xtVmuvomB2taGWDXBxVMw==");
+        current_request.add_header("Sec-WebSocket-Version", "13");
         tcp->on_receive(std::bind(&https_client::tcp_recv_callback, this));
         tcp->on_closed(std::bind(&https_client::tcp_closed_callback, this));
         if(!tcp->initialized()) {
@@ -315,19 +326,22 @@ private:
     }
 
     void tcp_connected_callback() {
-        debug1("https_client connected callback\n");
         std::string serialized = current_request.serialize();
+        debug("https_client sending:\n%s\n", serialized.c_str());
         tcp->write({(uint8_t*)serialized.c_str(), serialized.size()});
     }
 
     void tcp_recv_callback() {
-        debug1("https_client recv callback\n");
         std::string data;
         data.resize(tcp->available());
         std::span<uint8_t> span = {(uint8_t*)data.data(), data.size()};
         tcp->read(span);
+        debug("https_client recv'd:\n%s\n", data.c_str());
         current_response.parse(data);
         response_ready = current_response.state == http_response::parse_state::done;
+        if(response_ready) {
+            tcp->on_receive([](){});
+        }
     }
 
     void tcp_closed_callback() {
