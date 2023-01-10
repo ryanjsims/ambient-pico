@@ -79,4 +79,61 @@ size_t circular_buffer<T>::size() const {
 	return size;
 }
 
+template <class T>
+void circular_buffer<T>::advance(size_t amount) {
+    tail_ = (tail_ + amount) % max_size_;
+}
+
+template <class T>
+circular_buffer<T>::iterator circular_buffer<T>::begin() const {
+    return iterator(buf_.get(), tail_, max_size_);
+}
+
+template <class T>
+circular_buffer<T>::iterator circular_buffer<T>::end() const {
+    return iterator(buf_.get(), head_ + 1, max_size_);
+}
+
+template <class T>
+circular_buffer<T>::iterator::iterator(pointer ptr, size_t index, size_t max_size): ptr_(ptr), index_(index), max_size_(max_size) {}
+
+template <class T>
+circular_buffer<T>::iterator::reference circular_buffer<T>::iterator::operator*() const {
+    return ptr_[index_ % max_size_];
+}
+
+template <class T>
+circular_buffer<T>::iterator::pointer circular_buffer<T>::iterator::operator->() {
+    return &ptr_[index_ % max_size_];
+}
+
+template <class T>
+circular_buffer<T>::iterator& circular_buffer<T>::iterator::operator++() {
+    index_++;
+    return *this;
+}
+
+template <class T>
+circular_buffer<T>::iterator circular_buffer<T>::iterator::operator++(int) {
+    iterator tmp = *this;
+    index_++;
+    return tmp;
+}
+
+template <class T>
+circular_buffer<T>::iterator circular_buffer<T>::iterator::operator+(int rhs) {
+    iterator tmp(ptr_, index_ + rhs, max_size_);
+    return tmp;
+}
+
+template <class T>
+bool circular_buffer<T>::iterator::operator==(const iterator& rhs) {
+    return ((std::ptrdiff_t)(ptr_ + index_) % max_size_) == ((std::ptrdiff_t)(rhs.ptr_ + rhs.index_) % max_size_);
+}
+
+template <class T>
+bool circular_buffer<T>::iterator::operator!=(const iterator& rhs) {
+    return !(*this == rhs);
+}
+
 template class circular_buffer<uint8_t>;
