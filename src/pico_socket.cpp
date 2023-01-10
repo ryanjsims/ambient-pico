@@ -10,6 +10,7 @@
 #include "logger.h"
 #include "tcp_client.h"
 #include "http_client.h"
+#include "websocket.h"
 
 using namespace std::string_view_literals;
 
@@ -76,13 +77,47 @@ int main() {
     info1("Connecting to ambientweather...\n");
 
     https_client client("rt2.ambientweather.net", 443);
-    client.get("/socket.io/?EIO=4&transport=polling&api=1&applicationKey=" AMBIENT_WEATHER_APP_KEY);
+    client.get("/socket.io/?EIO=4&transport=websocket&api=1&applicationKey=" AMBIENT_WEATHER_APP_KEY);
 
+    std::string sid = "";
+    ws::websocket *websocket;
+    int request_num = 1;
     while(true) {
         sleep_ms(100);
         if(client.has_response()) {
             info("Got http response: %d %s\n", client.response().status(), client.response().get_status_text().c_str());
-            info("Body:\n%s\n", client.response().get_body().c_str());
+            
+            if(client.response().status() == 101) {
+                tcp_tls_client *tcp = client.tcp_client();
+                websocket = new ws::websocket(tcp);
+                std::string packet;
+                packet.resize(tcp->available());
+                std::span<uint8_t> span = {(uint8_t*)packet.data(), packet.size()};
+                tcp->read(span);
+                info("Packet: %02x %02x %s\n", packet[0], packet[1], packet.c_str() + 2);
+                size_t sid_start = packet.find("sid") + 6;
+                size_t sid_end = packet.find("\"", sid_start);
+                std::string sid = packet.substr(sid_start, sid_end - sid_start);
+                info("Got sid='%s'\n", sid.c_str());
+                websocket->on_receive([&websocket](){
+                    info1("Websocket recv\n");
+                    std::string data;
+                    data.resize(websocket->received_packet_size());
+                    websocket->read({(uint8_t*)data.data(), data.size()});
+                    info("Got data '%s'\n", data.c_str());
+                    if(data == "2") { //engine.io ping packet
+                        uint8_t reply = '3';
+                        websocket->write_text({&reply, 1});
+                    }
+                });
+                websocket->on_closed([](){});
+                std::string socket_io_payload = "40";
+                websocket->write_text({(uint8_t*)socket_io_payload.data(), socket_io_payload.size()});
+                sleep_ms(1000);
+                socket_io_payload = "42[\"subscribe\",{\"apiKeys\":[\"" AMBIENT_WEATHER_API_KEY "\"]}]";
+                websocket->write_text({(uint8_t*)socket_io_payload.data(), socket_io_payload.size()});
+            }
+
         }
     }
     cyw43_arch_deinit();
