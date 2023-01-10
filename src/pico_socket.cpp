@@ -5,12 +5,13 @@
 
 #include "lwip/netif.h"
 
-#define LOG_LEVEL LOG_LEVEL_DEBUG
+#define LOG_LEVEL LOG_LEVEL_INFO
 
 #include "logger.h"
 #include "tcp_client.h"
 #include "http_client.h"
 #include "websocket.h"
+#include "eio_client.h"
 
 using namespace std::string_view_literals;
 
@@ -80,7 +81,7 @@ int main() {
     client.get("/socket.io/?EIO=4&transport=websocket&api=1&applicationKey=" AMBIENT_WEATHER_APP_KEY);
 
     std::string sid = "";
-    ws::websocket *websocket;
+    eio_client *eio;
     int request_num = 1;
     while(true) {
         sleep_ms(100);
@@ -88,34 +89,26 @@ int main() {
             info("Got http response: %d %s\n", client.response().status(), client.response().get_status_text().c_str());
             
             if(client.response().status() == 101) {
-                tcp_tls_client *tcp = client.tcp_client();
-                websocket = new ws::websocket(tcp);
-                std::string packet;
-                packet.resize(tcp->available());
-                std::span<uint8_t> span = {(uint8_t*)packet.data(), packet.size()};
-                tcp->read(span);
-                info("Packet: %02x %02x %s\n", packet[0], packet[1], packet.c_str() + 2);
-                size_t sid_start = packet.find("sid") + 6;
-                size_t sid_end = packet.find("\"", sid_start);
-                std::string sid = packet.substr(sid_start, sid_end - sid_start);
-                info("Got sid='%s'\n", sid.c_str());
-                websocket->on_receive([&websocket](){
+                eio = new eio_client(client.tcp_client());
+                // std::string packet;
+                // packet.resize(tcp->available());
+                // std::span<uint8_t> span = {(uint8_t*)packet.data(), packet.size()};
+                // tcp->read(span);
+                // info("Packet: %02x %02x %s\n", packet[0], packet[1], packet.c_str() + 2);
+                eio->on_receive([&eio](){
                     info1("Websocket recv\n");
                     std::string data;
-                    data.resize(websocket->received_packet_size());
-                    websocket->read({(uint8_t*)data.data(), data.size()});
+                    data.resize(eio->packet_size());
+                    eio->read({(uint8_t*)data.data(), data.size()});
                     info("Got data '%s'\n", data.c_str());
-                    if(data == "2") { //engine.io ping packet
-                        uint8_t reply = '3';
-                        websocket->write_text({&reply, 1});
-                    }
                 });
-                websocket->on_closed([](){});
-                std::string socket_io_payload = "40";
-                websocket->write_text({(uint8_t*)socket_io_payload.data(), socket_io_payload.size()});
+                eio->on_closed([](){});
+                eio->read_initial_packet();
+                std::string socket_io_payload = "0";
+                eio->send_message({(uint8_t*)socket_io_payload.data(), socket_io_payload.size()});
                 sleep_ms(1000);
-                socket_io_payload = "42[\"subscribe\",{\"apiKeys\":[\"" AMBIENT_WEATHER_API_KEY "\"]}]";
-                websocket->write_text({(uint8_t*)socket_io_payload.data(), socket_io_payload.size()});
+                socket_io_payload = "2[\"subscribe\",{\"apiKeys\":[\"" AMBIENT_WEATHER_API_KEY "\"]}]";
+                eio->send_message({(uint8_t*)socket_io_payload.data(), socket_io_payload.size()});
             }
 
         }

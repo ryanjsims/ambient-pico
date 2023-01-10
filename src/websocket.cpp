@@ -17,7 +17,7 @@ size_t ws::websocket::read(std::span<uint8_t> data) {
     return tcp->read(data);
 }
 
-uint64_t ws::websocket::received_packet_size() {
+uint32_t ws::websocket::received_packet_size() {
     return packet_size;
 }
 
@@ -40,17 +40,18 @@ void ws::websocket::tcp_recv_callback() {
     uint8_t frame_header[2];
     tcp->read({frame_header, 2});
     packet_size = frame_header[1] & 0x7F;
-    info("Header packet size: %x\n", packet_size);
+    debug("Header packet size: %x\n", packet_size);
     if(packet_size == 0x7E) {
         uint16_t temp;
         tcp->read({(uint8_t*)&temp, 2});
-        packet_size = temp;
+        packet_size = ntohs(temp);
     } else if(packet_size == 0x7F) {
         uint32_t temp;
         tcp->read({(uint8_t*)&temp, 4});
         tcp->read({(uint8_t*)&packet_size, 4});
+        packet_size = ntohl(packet_size);
     }
-    info("ws::websocket::tcp_recv_callback: Got size %u (0x%08x)\n", packet_size, packet_size);
+    debug("ws::websocket::tcp_recv_callback: Got size %u (0x%08x)\n", packet_size, packet_size);
     switch(opcodes(frame_header[0] & 0x07)) {
     case opcodes::ping:
         // Client should never receive a ping

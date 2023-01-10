@@ -8,6 +8,7 @@
 #include "circular_buffer.h"
 #include "tcp_tls_client.h"
 #include "logger.h"
+class eio_client;
 
 extern "C" {
     int mbedtls_hardware_poll(void *data, unsigned char *output, size_t len, size_t *olen);
@@ -30,13 +31,14 @@ namespace ws {
 
     class websocket {
     public:
+        friend class ::eio_client;
         websocket(tcp_tls_client *socket);
 
         void write_text(std::span<uint8_t> data);
         void write_binary(std::span<uint8_t> data);
 
         size_t read(std::span<uint8_t> data);
-        uint64_t received_packet_size();
+        uint32_t received_packet_size();
 
         void on_receive(std::function<void()> callback);
         void on_closed(std::function<void()> callback);
