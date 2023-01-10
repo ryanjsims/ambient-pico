@@ -11,7 +11,7 @@ public:
     tcp_tls_client();
     bool init();
     int available() const;
-    size_t read(std::span<uint8_t> &out);
+    size_t read(std::span<uint8_t> out);
     bool write(std::span<const uint8_t> data);
     err_t close();
     bool connect(std::string host, uint16_t port);
