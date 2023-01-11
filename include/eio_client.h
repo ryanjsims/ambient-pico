@@ -16,7 +16,7 @@ public:
     };
 
     eio_client(ws::websocket *socket);
-    eio_client(tcp_tls_client *socket);
+    eio_client(tcp_base *socket);
     ~eio_client() { delete socket_; }
 
     size_t read(std::span<uint8_t> data);

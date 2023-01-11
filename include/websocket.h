@@ -4,9 +4,10 @@
 #include <cstdint>
 #include <vector>
 #include <cstring>
+#include <functional>
 
 #include "circular_buffer.h"
-#include "tcp_tls_client.h"
+#include "tcp_base.h"
 #include "logger.h"
 class eio_client;
 
@@ -32,7 +33,7 @@ namespace ws {
     class websocket {
     public:
         friend class ::eio_client;
-        websocket(tcp_tls_client *socket);
+        websocket(tcp_base *socket);
 
         void write_text(std::span<uint8_t> data);
         void write_binary(std::span<uint8_t> data);
@@ -44,7 +45,7 @@ namespace ws {
         void on_closed(std::function<void()> callback);
 
     private:
-        tcp_tls_client *tcp;
+        tcp_base *tcp;
         std::function<void()> user_receive_callback, user_close_callback;
         uint32_t packet_size;
 

@@ -7,7 +7,7 @@ eio_client::eio_client(ws::websocket *socket): socket_(socket), user_close_callb
     socket_->on_closed(std::bind(&eio_client::ws_close_callback, this));
 }
 
-eio_client::eio_client(tcp_tls_client *socket): user_close_callback([](){}), user_receive_callback([](){}) {
+eio_client::eio_client(tcp_base *socket): user_close_callback([](){}), user_receive_callback([](){}) {
     socket_ = new ws::websocket(socket);
     socket_->on_receive(std::bind(&eio_client::ws_recv_callback, this));
     socket_->on_closed(std::bind(&eio_client::ws_close_callback, this));
@@ -22,6 +22,7 @@ void eio_client::send_message(std::span<uint8_t> data) {
     packet.resize(data.size() + 1);
     packet[0] = (uint8_t)packet_type::message;
     memcpy(packet.data() + 1, data.data(), data.size());
+    info("EIO send message: '%s'\n", packet.c_str());
     socket_->write_text({(uint8_t*)packet.data(), packet.size()});
 }
 

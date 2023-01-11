@@ -77,7 +77,7 @@ int main() {
 
     info1("Connecting to ambientweather...\n");
 
-    https_client client("rt2.ambientweather.net", 443);
+    http_client client("https://rt2.ambientweather.net/");
     client.get("/socket.io/?EIO=4&transport=websocket&api=1&applicationKey=" AMBIENT_WEATHER_APP_KEY);
 
     std::string sid = "";
@@ -89,7 +89,7 @@ int main() {
             info("Got http response: %d %s\n", client.response().status(), client.response().get_status_text().c_str());
             
             if(client.response().status() == 101) {
-                eio = new eio_client(client.tcp_client());
+                eio = new eio_client(client.release_tcp_client());
                 // std::string packet;
                 // packet.resize(tcp->available());
                 // std::span<uint8_t> span = {(uint8_t*)packet.data(), packet.size()};

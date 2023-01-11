@@ -50,7 +50,7 @@ int tcp_client::available() const {
     return buffer.size();
 }
 
-size_t tcp_client::read(std::span<uint8_t> &out) {
+size_t tcp_client::read(std::span<uint8_t> out) {
     return buffer.get(out);
 }
 

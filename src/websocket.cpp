@@ -1,6 +1,8 @@
 #include "websocket.h"
 
-ws::websocket::websocket(tcp_tls_client *socket): tcp(socket), user_receive_callback([](){}), user_close_callback([](){}) {
+#include "lwip/ip_addr.h"
+
+ws::websocket::websocket(tcp_base *socket): tcp(socket), user_receive_callback([](){}), user_close_callback([](){}) {
     tcp->on_receive(std::bind(&websocket::tcp_recv_callback, this));
     tcp->on_closed(std::bind(&websocket::tcp_close_callback, this));
 }

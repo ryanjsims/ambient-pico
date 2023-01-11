@@ -1,33 +1,36 @@
 #pragma once
 
-#include "tcp_client.h"
+#include "tcp_base.h"
+#include "circular_buffer.h"
+#include "logger.h"
+
 #include "lwip/altcp_tcp.h"
 #include "lwip/altcp_tls.h"
 
 static struct altcp_tls_config *tls_config = nullptr;
 
-class tcp_tls_client {
+class tcp_tls_client : public tcp_base {
 public:
     tcp_tls_client();
-    bool init();
-    int available() const;
-    size_t read(std::span<uint8_t> out);
-    bool write(std::span<const uint8_t> data);
-    err_t close();
-    bool connect(std::string host, uint16_t port);
+    bool init() override;
+    int available() const override;
+    size_t read(std::span<uint8_t> out) override;
+    bool write(std::span<const uint8_t> data) override;
+    bool connect(std::string host, uint16_t port) override;
+    err_t close() override;
 
-    bool ready() const;
-    bool initialized() const;
+    bool ready() const override;
+    bool initialized() const override;
 
-    void on_receive(std::function<void()> callback) {
+    void on_receive(std::function<void()> callback) override {
         user_receive_callback = callback;
     }
 
-    void on_connected(std::function<void()> callback) {
+    void on_connected(std::function<void()> callback) override {
         user_connected_callback = callback;
     }
 
-    void on_closed(std::function<void()> callback) {
+    void on_closed(std::function<void()> callback) override {
         user_closed_callback = callback;
     }
 

@@ -4,39 +4,35 @@
 #include <functional>
 #include <span>
 
+#include "tcp_base.h"
 #include "lwip/ip_addr.h"
-#include "lwip/err.h"
-#include "lwip/pbuf.h"
 
 #include "circular_buffer.h"
 #include "logger.h"
 
-#define BUF_SIZE 2048
-#define POLL_TIME_S 2
-
-class tcp_client {
+class tcp_client : public tcp_base {
 public:
     tcp_client();
-    bool init();
-    int available() const;
-    size_t read(std::span<uint8_t> &out);
-    bool write(std::span<const uint8_t> data);
+    bool init() override;
+    int available() const  override;
+    size_t read(std::span<uint8_t> out) override;
+    bool write(std::span<const uint8_t> data) override;
     bool connect(ip_addr_t addr, uint16_t port);
-    bool connect(std::string addr, uint16_t port);
-    err_t close();
+    bool connect(std::string addr, uint16_t port) override;
+    err_t close() override;
 
-    bool ready() const;
-    bool initialized() const;
+    bool ready() const override;
+    bool initialized() const override;
 
-    void on_receive(std::function<void()> callback) {
+    void on_receive(std::function<void()> callback) override {
         user_receive_callback = callback;
     }
 
-    void on_connected(std::function<void()> callback) {
+    void on_connected(std::function<void()> callback) override {
         user_connected_callback = callback;
     }
 
-    void on_closed(std::function<void()> callback) {
+    void on_closed(std::function<void()> callback) override {
         user_closed_callback = callback;
     }
 

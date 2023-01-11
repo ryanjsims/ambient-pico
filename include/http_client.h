@@ -7,18 +7,13 @@
 #include <map>
 #include <vector>
 
+#include "LUrlParser.h"
+
 #include "logger.h"
 
 #include <algorithm>
 
-bool iequals(const std::string& a, const std::string& b)
-{
-    return std::equal(a.begin(), a.end(),
-                      b.begin(), b.end(),
-                      [](char a, char b) {
-                          return tolower(a) == tolower(b);
-                      });
-}
+bool iequals(const std::string& a, const std::string& b);
 
 class http_request {
     friend class http_client;
@@ -169,97 +164,94 @@ private:
     parse_state state;
 };
 
+// class http_client {
+// public:
+//     http_client(std::string host): host_(host) {
+//         tcp = new tcp_client();
+//     }
+//
+//     http_client(std::string host, uint16_t port): host_(host), port_(port) {
+//         tcp = new tcp_client();
+//     }
+//
+//     http_client(http_client&&) = default;
+//
+//     ~http_client() {
+//         delete tcp;
+//     }
+//
+//     void get(std::string target) {
+//         current_request = {"GET", target};
+//         current_request.add_header("Host", host_);
+//         current_request.add_header("User-Agent", "pico");
+//         send_request();
+//     }
+//
+//     bool has_response() {
+//         return response_ready;
+//     }
+//
+//     const http_response &response() {
+//         response_ready = false;
+//         return current_response;
+//     }
+//
+// private:
+//     tcp_client *tcp;
+//     bool response_ready = false;
+//     http_request current_request;
+//     http_response current_response;
+//     std::string host_;
+//     uint16_t port_ = 80;
+//
+//     void send_request() {
+//         response_ready = false;
+//         tcp->on_receive(std::bind(&http_client::tcp_recv_callback, this));
+//         tcp->on_closed(std::bind(&http_client::tcp_closed_callback, this));
+//         if(!tcp->initialized()) {
+//             tcp->init();
+//         }
+//
+//         if(!tcp->ready()) {
+//             tcp->on_connected(std::bind(&http_client::tcp_connected_callback, this));
+//             tcp->connect(host_, port_);
+//         } else {
+//             tcp_connected_callback();
+//         }
+//     }
+//
+//     void tcp_connected_callback() {
+//         debug1("http_client connected callback\n");
+//         std::string serialized = current_request.serialize();
+//         tcp->write({(uint8_t*)serialized.c_str(), serialized.size()});
+//     }
+//
+//     void tcp_recv_callback() {
+//         debug1("http_client recv callback\n");
+//         std::string data;
+//         data.resize(tcp->available());
+//         std::span<uint8_t> span = {(uint8_t*)data.data(), data.size()};
+//         tcp->read(span);
+//         current_response.parse(data);
+//         response_ready = current_response.state == http_response::parse_state::done;
+//     }
+//
+//     void tcp_closed_callback() {
+//         debug1("http_client closed callback\n");
+//     }
+// };
+
 class http_client {
 public:
-    http_client(std::string host): host_(host) {
-        tcp = new tcp_client();
-    }
-
-    http_client(std::string host, uint16_t port): host_(host), port_(port) {
-        tcp = new tcp_client();
+    http_client(std::string url): host_(""), url_(url), port_(-1) {
+        init();
     }
 
     http_client(http_client&&) = default;
 
     ~http_client() {
-        delete tcp;
-    }
-
-    void get(std::string target) {
-        current_request = {"GET", target};
-        current_request.add_header("Host", host_);
-        current_request.add_header("User-Agent", "pico");
-        send_request();
-    }
-
-    bool has_response() {
-        return response_ready;
-    }
-
-    const http_response &response() {
-        response_ready = false;
-        return current_response;
-    }
-
-private:
-    tcp_client *tcp;
-    bool response_ready = false;
-    http_request current_request;
-    http_response current_response;
-    std::string host_;
-    uint16_t port_ = 80;
-
-    void send_request() {
-        response_ready = false;
-        tcp->on_receive(std::bind(&http_client::tcp_recv_callback, this));
-        tcp->on_closed(std::bind(&http_client::tcp_closed_callback, this));
-        if(!tcp->initialized()) {
-            tcp->init();
-        }
-
-        if(!tcp->ready()) {
-            tcp->on_connected(std::bind(&http_client::tcp_connected_callback, this));
-            tcp->connect(host_, port_);
-        } else {
-            tcp_connected_callback();
-        }
-    }
-
-    void tcp_connected_callback() {
-        debug1("http_client connected callback\n");
-        std::string serialized = current_request.serialize();
-        tcp->write({(uint8_t*)serialized.c_str(), serialized.size()});
-    }
-
-    void tcp_recv_callback() {
-        debug1("http_client recv callback\n");
-        std::string data;
-        data.resize(tcp->available());
-        std::span<uint8_t> span = {(uint8_t*)data.data(), data.size()};
-        tcp->read(span);
-        current_response.parse(data);
-        response_ready = current_response.state == http_response::parse_state::done;
-    }
-
-    void tcp_closed_callback() {
-        debug1("http_client closed callback\n");
-    }
-};
-
-class https_client {
-public:
-    https_client(std::string host): host_(host) {
-        tcp = new tcp_tls_client();
-    }
-
-    https_client(std::string host, uint16_t port): host_(host), port_(port) {
-        tcp = new tcp_tls_client();
-    }
-
-    https_client(https_client&&) = default;
-
-    ~https_client() {
-        delete tcp;
+        if(tcp)
+            delete tcp;
     }
 
     void get(std::string target) {
@@ -288,17 +280,53 @@ public:
         return current_response;
     }
 
-    tcp_tls_client *tcp_client() {
-        return std::move(tcp);
+    void on_response(std::function<void()> callback) {
+        user_response_callback = callback;
+    }
+
+    tcp_base *release_tcp_client() {
+        tcp_base *to_return = tcp;
+        tcp = nullptr;
+        return std::move(to_return);
+    }
+
+    LUrlParser::ParseURL get_parsed_url() {
+        return URL;
     }
 
 private:
-    tcp_tls_client *tcp;
+    tcp_base *tcp;
     bool response_ready = false;
     http_request current_request;
     http_response current_response;
-    std::string host_;
-    uint16_t port_ = 443;
+    std::string host_, url_;
+    int port_;
+    LUrlParser::ParseURL URL;
+    std::function<void()> user_response_callback;
+
+    bool init() {
+        URL = LUrlParser::ParseURL::parseURL(url_);
+        if(!URL.isValid()) {
+            error("Invalid URL: %s\n", url_.c_str());
+            return false;
+        }
+
+        host_ = URL.host_;
+        if(URL.port_.size() > 0)
+            URL.getPort(&port_);
+        if(URL.scheme_ == "https" || URL.scheme_ == "wss") {
+            tcp = new tcp_tls_client();
+            if(port_ == -1) {
+                port_ = 443;
+            }
+        } else {
+            tcp = new tcp_client();
+            if(port_ == -1) {
+                port_ = 80;
+            }
+        }
+        return true;
+    }
 
     void send_request() {
         response_ready = false;
@@ -311,14 +339,14 @@ private:
         current_request.add_header("Upgrade", "websocket");
         current_request.add_header("Sec-WebSocket-Key", "8xtVmuvomB2taGWDXBxVMw==");
         current_request.add_header("Sec-WebSocket-Version", "13");
-        tcp->on_receive(std::bind(&https_client::tcp_recv_callback, this));
-        tcp->on_closed(std::bind(&https_client::tcp_closed_callback, this));
+        tcp->on_receive(std::bind(&http_client::tcp_recv_callback, this));
+        tcp->on_closed(std::bind(&http_client::tcp_closed_callback, this));
         if(!tcp->initialized()) {
             tcp->init();
         }
 
         if(!tcp->ready()) {
-            tcp->on_connected(std::bind(&https_client::tcp_connected_callback, this));
+            tcp->on_connected(std::bind(&http_client::tcp_connected_callback, this));
             tcp->connect(host_, port_);
         } else {
             tcp_connected_callback();
@@ -327,7 +355,7 @@ private:
 
     void tcp_connected_callback() {
         std::string serialized = current_request.serialize();
-        debug("https_client sending:\n%s\n", serialized.c_str());
+        debug("http_client sending:\n%s\n", serialized.c_str());
         tcp->write({(uint8_t*)serialized.c_str(), serialized.size()});
     }
 
@@ -336,7 +364,7 @@ private:
         data.resize(tcp->available());
         std::span<uint8_t> span = {(uint8_t*)data.data(), data.size()};
         tcp->read(span);
-        debug("https_client recv'd:\n%s\n", data.c_str());
+        debug("http_client recv'd:\n%s\n", data.c_str());
         current_response.parse(data);
         response_ready = current_response.state == http_response::parse_state::done;
         if(response_ready) {

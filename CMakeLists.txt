@@ -8,8 +8,18 @@ include(lib/pico-sdk/pico_sdk_init.cmake)
 project(ambient-pico)
 
 pico_sdk_init()
-add_executable(pico_socket src/pico_socket.cpp src/tcp_client.cpp src/circular_buffer.cpp src/tcp_tls_client.cpp src/websocket.cpp src/eio_client.cpp)
-target_include_directories(pico_socket PRIVATE include)
+add_executable(pico_socket 
+    src/pico_socket.cpp
+    src/tcp_client.cpp
+    src/circular_buffer.cpp
+    src/tcp_tls_client.cpp
+    src/http_client.cpp
+    src/websocket.cpp
+    src/eio_client.cpp
+    src/sio_client.cpp
+    src/LUrlParser.cpp
+)
+target_include_directories(pico_socket PRIVATE include lib/json/single_include)
 target_link_libraries(pico_socket PRIVATE 
     pico_stdlib
     pico_cyw43_arch_lwip_threadsafe_background
