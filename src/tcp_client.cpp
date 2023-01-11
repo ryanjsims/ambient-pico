@@ -175,55 +175,55 @@ err_t tcp_client::recv_callback(void* arg, tcp_pcb* pcb, pbuf* p, err_t err) {
 void tcp_client::tcp_perror(err_t err) {
     switch(err) {
     case ERR_ABRT:
-        printf("ERR_ABRT\n");
+        error_cont1("ERR_ABRT\n");
         break;
     case ERR_ALREADY:
-        printf("ERR_ALREADY\n");
+        error_cont1("ERR_ALREADY\n");
         break;
     case ERR_ARG:
-        printf("ERR_ARG\n");
+        error_cont1("ERR_ARG\n");
         break;
     case ERR_BUF:
-        printf("ERR_BUF\n");
+        error_cont1("ERR_BUF\n");
         break;
     case ERR_CLSD:
-        printf("ERR_CLSD\n");
+        error_cont1("ERR_CLSD\n");
         break;
     case ERR_CONN:
-        printf("ERR_CONN\n");
+        error_cont1("ERR_CONN\n");
         break;
     case ERR_IF:
-        printf("ERR_IF\n");
+        error_cont1("ERR_IF\n");
         break;
     case ERR_INPROGRESS:
-        printf("ERR_INPROGRESS\n");
+        error_cont1("ERR_INPROGRESS\n");
         break;
     case ERR_ISCONN:
-        printf("ERR_ISCONN\n");
+        error_cont1("ERR_ISCONN\n");
         break;
     case ERR_MEM:
-        printf("ERR_MEM\n");
+        error_cont1("ERR_MEM\n");
         break;
     case ERR_OK:
-        printf("ERR_OK\n");
+        error_cont1("ERR_OK\n");
         break;
     case ERR_RST:
-        printf("ERR_RST\n");
+        error_cont1("ERR_RST\n");
         break;
     case ERR_RTE:
-        printf("ERR_RTE\n");
+        error_cont1("ERR_RTE\n");
         break;
     case ERR_TIMEOUT:
-        printf("ERR_TIMEOUT\n");
+        error_cont1("ERR_TIMEOUT\n");
         break;
     case ERR_USE:
-        printf("ERR_USE\n");
+        error_cont1("ERR_USE\n");
         break;
     case ERR_VAL:
-        printf("ERR_VAL\n");
+        error_cont1("ERR_VAL\n");
         break;
     case ERR_WOULDBLOCK:
-        printf("ERR_WOULDBLOCK\n");
+        error_cont1("ERR_WOULDBLOCK\n");
         break;
     }
 }

@@ -285,6 +285,9 @@ public:
     }
 
     tcp_base *release_tcp_client() {
+        tcp->on_connected([](){});
+        tcp->on_receive([](){});
+        tcp->on_closed([](){});
         tcp_base *to_return = tcp;
         tcp = nullptr;
         return std::move(to_return);
@@ -369,6 +372,7 @@ private:
         response_ready = current_response.state == http_response::parse_state::done;
         if(response_ready) {
             tcp->on_receive([](){});
+            user_response_callback();
         }
     }
 

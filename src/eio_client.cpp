@@ -3,11 +3,13 @@
 #include <cstring>
 
 eio_client::eio_client(ws::websocket *socket): socket_(socket), user_close_callback([](){}), user_receive_callback([](){}) {
+    trace1("eio_client (ctor)\n");
     socket_->on_receive(std::bind(&eio_client::ws_recv_callback, this));
     socket_->on_closed(std::bind(&eio_client::ws_close_callback, this));
 }
 
 eio_client::eio_client(tcp_base *socket): user_close_callback([](){}), user_receive_callback([](){}) {
+    trace1("eio_client (ctor)\n");
     socket_ = new ws::websocket(socket);
     socket_->on_receive(std::bind(&eio_client::ws_recv_callback, this));
     socket_->on_closed(std::bind(&eio_client::ws_close_callback, this));
@@ -22,7 +24,7 @@ void eio_client::send_message(std::span<uint8_t> data) {
     packet.resize(data.size() + 1);
     packet[0] = (uint8_t)packet_type::message;
     memcpy(packet.data() + 1, data.data(), data.size());
-    info("EIO send message: '%s'\n", packet.c_str());
+    debug("EIO send message: '%s'\n", packet.c_str());
     socket_->write_text({(uint8_t*)packet.data(), packet.size()});
 }
 
@@ -38,7 +40,12 @@ void eio_client::on_closed(std::function<void()> callback) {
     user_close_callback = callback;
 }
 
+void eio_client::on_open(std::function<void()> callback) {
+    user_open_callback = callback;
+}
+
 void eio_client::read_initial_packet() {
+    debug1("Engine reading initial packet...\n");
     socket_->tcp_recv_callback();
 }
 
@@ -60,23 +67,24 @@ void eio_client::ws_recv_callback() {
         token_end = packet.find_first_of(",}", token_start);
         std::from_chars(packet.c_str() + token_start, packet.c_str() + token_end, ping_timeout);
         info("EIO Open:\n    sid=%s\n    pingInterval=%d\n    pingTimeout=%d\n", sid.c_str(), ping_interval, ping_timeout);
+        user_open_callback();
         break;
     }
 
     case packet_type::close:
-        info1("EIO Close\n");
+        debug1("EIO Close\n");
         ws_close_callback();
         break;
 
     case packet_type::ping:{
-        info1("EIO Ping\n");
+        debug1("EIO Ping\n");
         packet_type response = packet_type::pong;
         socket_->write_text({(uint8_t*)&response, 1});
         break;
     }
 
     case packet_type::message:
-        info1("EIO Message\n");
+        debug1("EIO Message\n");
         user_receive_callback();
         break;
     

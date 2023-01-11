@@ -39,6 +39,9 @@ void ws::websocket::mask(std::span<uint8_t> data, uint32_t masking_key) {
 }
 
 void ws::websocket::tcp_recv_callback() {
+    if(!tcp->available()) {
+        return;
+    }
     uint8_t frame_header[2];
     tcp->read({frame_header, 2});
     packet_size = frame_header[1] & 0x7F;

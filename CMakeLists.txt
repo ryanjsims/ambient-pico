@@ -26,6 +26,7 @@ target_link_libraries(pico_socket PRIVATE
     pico_lwip_mbedtls
     pico_mbedtls
 )
+target_compile_options(pico_socket PRIVATE "-Wno-psabi")
 target_compile_definitions(pico_socket PRIVATE "WIFI_SSID=\"$ENV{WIFI_SSID}\"" "WIFI_PASSWORD=\"$ENV{WIFI_PASS}\"" "AMBIENT_WEATHER_APP_KEY=\"$ENV{AMBIENT_WEATHER_APP_KEY}\"" "AMBIENT_WEATHER_API_KEY=\"$ENV{AMBIENT_WEATHER_API_KEY}\"")
 pico_enable_stdio_usb(pico_socket 1)
 pico_enable_stdio_uart(pico_socket 0)

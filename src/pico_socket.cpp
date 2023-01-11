@@ -2,18 +2,21 @@
 #include <pico/stdlib.h>
 #include <pico/cyw43_arch.h>
 #include <string_view>
+#include "nlohmann/json.hpp"
 
 #include "lwip/netif.h"
 
-#define LOG_LEVEL LOG_LEVEL_INFO
+//#define LOG_LEVEL LOG_LEVEL_INFO
 
 #include "logger.h"
 #include "tcp_client.h"
 #include "http_client.h"
 #include "websocket.h"
 #include "eio_client.h"
+#include "sio_client.h"
 
 using namespace std::string_view_literals;
+
 
 void dump_bytes(const uint8_t *bptr, uint32_t len) {
     unsigned int i = 0;
@@ -21,23 +24,23 @@ void dump_bytes(const uint8_t *bptr, uint32_t len) {
     info("dump_bytes %d", len);
     for (i = 0; i < len;) {
         if ((i & 0x0f) == 0) {
-            printf("\n");
+            info_cont1("\n");
         } else if ((i & 0x07) == 0) {
-            printf(" ");
+            info_cont1(" ");
         }
-        printf("%02x ", bptr[i++]);
+        info_cont("%02x ", bptr[i++]);
     }
-    printf("\n");
+    info_cont1("\n");
 }
 
 void netif_status_callback(netif* netif) {
     info1("netif status change:\n");
     info1("    Link ");
     if(netif_is_link_up(netif)) {
-        printf("UP\n");
+        info_cont1("UP\n");
         cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
     } else {
-        printf("DOWN\n");
+        info_cont1("DOWN\n");
         for(int i = 0; i < 3; i++) {
             cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
             sleep_ms(100);
@@ -48,9 +51,9 @@ void netif_status_callback(netif* netif) {
     const ip4_addr_t *address = netif_ip4_addr(netif);
     info1("    IP Addr: ");
     if(address) {
-        printf("%d.%d.%d.%d\n", ip4_addr1(address), ip4_addr2(address), ip4_addr3(address), ip4_addr4(address));
+        info_cont("%d.%d.%d.%d\n", ip4_addr1(address), ip4_addr2(address), ip4_addr3(address), ip4_addr4(address));
     } else {
-        printf("(null)\n");
+        info_cont1("(null)\n");
     }
 }
 
@@ -76,41 +79,32 @@ int main() {
     }
 
     info1("Connecting to ambientweather...\n");
+    sio_client client("https://rt2.ambientweather.net/", {{"api", "1"}, {"applicationKey", AMBIENT_WEATHER_APP_KEY}});
+    client.socket()->on("subscribed", [](nlohmann::json body){
+        info("Subscribed:\n%s\n", body[0].dump(4).c_str());
+    });
 
-    http_client client("https://rt2.ambientweather.net/");
-    client.get("/socket.io/?EIO=4&transport=websocket&api=1&applicationKey=" AMBIENT_WEATHER_APP_KEY);
+    client.socket()->on("data", [](nlohmann::json body){
+        info("Data:\n%s\n", body[0].dump(4).c_str());
+    });
 
-    std::string sid = "";
-    eio_client *eio;
-    int request_num = 1;
+    client.socket()->once("connect", [&client](nlohmann::json body){
+        info1("connect handler called\n");
+    });
+
+    int state = 0;
+
     while(true) {
         sleep_ms(100);
-        if(client.has_response()) {
-            info("Got http response: %d %s\n", client.response().status(), client.response().get_status_text().c_str());
-            
-            if(client.response().status() == 101) {
-                eio = new eio_client(client.release_tcp_client());
-                // std::string packet;
-                // packet.resize(tcp->available());
-                // std::span<uint8_t> span = {(uint8_t*)packet.data(), packet.size()};
-                // tcp->read(span);
-                // info("Packet: %02x %02x %s\n", packet[0], packet[1], packet.c_str() + 2);
-                eio->on_receive([&eio](){
-                    info1("Websocket recv\n");
-                    std::string data;
-                    data.resize(eio->packet_size());
-                    eio->read({(uint8_t*)data.data(), data.size()});
-                    info("Got data '%s'\n", data.c_str());
-                });
-                eio->on_closed([](){});
-                eio->read_initial_packet();
-                std::string socket_io_payload = "0";
-                eio->send_message({(uint8_t*)socket_io_payload.data(), socket_io_payload.size()});
-                sleep_ms(1000);
-                socket_io_payload = "2[\"subscribe\",{\"apiKeys\":[\"" AMBIENT_WEATHER_API_KEY "\"]}]";
-                eio->send_message({(uint8_t*)socket_io_payload.data(), socket_io_payload.size()});
-            }
-
+        if(state == 0 && client.ready()) {
+            client.connect();
+            state = 1;
+        } else if(state == 1 && client.socket()->connected()) {
+            info1("Emitting subscribe event\n");
+            nlohmann::json object;
+            object["apiKeys"] = {AMBIENT_WEATHER_API_KEY};
+            client.socket()->emit("subscribe", object);
+            state = 2;
         }
     }
     cyw43_arch_deinit();
