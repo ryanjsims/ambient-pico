@@ -1,3 +1,6 @@
 [submodule "lib/pico-sdk"]
 	path = lib/pico-sdk
 	url = https://github.com/ryanjsims/pico-sdk
+[submodule "lib/json"]
+	path = lib/json
+	url = https://github.com/nlohmann/json
