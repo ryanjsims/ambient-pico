@@ -8,6 +8,28 @@
 #include <map>
 #include <memory>
 #include <functional>
+
+class sio_packet {
+public:
+    sio_packet(): payload(15, ' ') {}
+
+    sio_packet& operator+=(const std::string &rhs) {
+        payload += rhs;
+        return *this;
+    }
+
+    std::span<uint8_t> span() const {
+        return {(uint8_t*)payload.data() + 15, payload.size() - 15};
+    }
+
+    const char* c_str() const noexcept {
+        return payload.c_str();
+    }
+
+private:
+    std::string payload;
+};
+
 class sio_client;
 class sio_socket {
     friend class sio_client;
@@ -23,8 +45,9 @@ public:
         };
     }
 
-    void emit(std::string event, nlohmann::json array = nlohmann::json::array()) {
-        std::string packet = "2" + (ns_ != "/" ? ns_ + "," : "");
+    bool emit(std::string event, nlohmann::json array = nlohmann::json::array()) {
+        sio_packet packet; // Add 15 bytes at the beginning to allow underlying protocols room to write data
+        packet += "2" + (ns_ != "/" ? ns_ + "," : "");
         if(!array.is_array()) {
             array = {event, array};
         } else {
@@ -33,8 +56,9 @@ public:
         packet += array.dump();
         debug("emit:\n\tNamespace '%s'\n\tpacket: '%s'\n", ns_.c_str(), packet.c_str());
         if(engine) {
-            engine->send_message({(uint8_t*)packet.data(), packet.size()});
+            return engine->send_message(packet.span());
         }
+        return false;
     }
 
     bool connected() const {
@@ -129,8 +153,9 @@ public:
             error1("connect: Engine not initialized!\n");
             return;
         }
-        std::string socket_io_payload = "0" + (ns != "/" ? ns + "," : "");
-        engine->send_message({(uint8_t*)socket_io_payload.data(), socket_io_payload.size()});
+        sio_packet payload;
+        payload += "0" + (ns != "/" ? ns + "," : "");
+        engine->send_message(payload.span());
     }
 
     void disconnect(std::string ns = "/") {
@@ -141,8 +166,9 @@ public:
         if(namespace_connections.find(ns) != namespace_connections.end()) {
             namespace_connections[ns].reset();
             namespace_connections.erase(ns);
-            std::string packet = "1" + (ns != "/" ? ns + "," : "");
-            engine->send_message({(uint8_t*)packet.data(), packet.size()});
+            sio_packet packet;
+            packet += "1" + (ns != "/" ? ns + "," : "");
+            engine->send_message(packet.span());
         }
     }
 

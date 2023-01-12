@@ -23,7 +23,8 @@ public:
     }
 
     size_t read(std::span<uint8_t> data);
-    void send_message(std::span<uint8_t> data);
+    // Needs 1 + 14 add'l bytes to encode message
+    bool send_message(std::span<uint8_t> data);
     uint32_t packet_size() const;
 
     void on_open(std::function<void()> callback);

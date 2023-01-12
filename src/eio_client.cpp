@@ -2,6 +2,32 @@
 #include <charconv>
 #include <cstring>
 
+class eio_packet {
+public:
+    eio_packet(): payload(14, ' ') {}
+
+    eio_packet& operator+=(const std::string rhs) {
+        payload += rhs;
+        return *this;
+    }
+
+    eio_packet& operator+=(const char rhs) {
+        payload += rhs;
+        return *this;
+    }
+
+    std::span<uint8_t> span() {
+        return {(uint8_t*)payload.data() + 14, payload.size() - 14};
+    }
+
+    const char* c_str() const noexcept {
+        return payload.c_str();
+    }
+
+private:
+    std::string payload;
+};
+
 eio_client::eio_client(ws::websocket *socket): socket_(socket), user_close_callback([](){}), user_receive_callback([](){}) {
     trace1("eio_client (ctor)\n");
     socket_->on_receive(std::bind(&eio_client::ws_recv_callback, this));
@@ -19,13 +45,16 @@ size_t eio_client::read(std::span<uint8_t> data) {
     return socket_->read(data);
 }
 
-void eio_client::send_message(std::span<uint8_t> data) {
-    std::string packet;
-    packet.resize(data.size() + 1);
-    packet[0] = (uint8_t)packet_type::message;
-    memcpy(packet.data() + 1, data.data(), data.size());
-    debug("EIO send message: '%s'\n", packet.c_str());
-    socket_->write_text({(uint8_t*)packet.data(), packet.size()});
+bool eio_client::send_message(std::span<uint8_t> data) {
+    for(int i = -15; i < 0; i++) {
+        if(data[i] != ' ') {
+            error1("eio_client::send_message expects 15 extra space bytes before the beginning of the given span!\n");
+            return false;
+        }
+    }
+    data[-1] = (uint8_t)packet_type::message;
+    debug("EIO send message: '%*s'\n", data.size() + 1, data.data() - 1);
+    return socket_->write_text({data.data() - 1, data.size() + 1});
 }
 
 uint32_t eio_client::packet_size() const {
@@ -78,8 +107,9 @@ void eio_client::ws_recv_callback() {
 
     case packet_type::ping:{
         debug1("EIO Ping\n");
-        packet_type response = packet_type::pong;
-        socket_->write_text({(uint8_t*)&response, 1});
+        eio_packet response;
+        response += (char)packet_type::pong;
+        socket_->write_text(response.span());
         break;
     }
 

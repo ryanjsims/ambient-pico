@@ -35,8 +35,9 @@ namespace ws {
         friend class ::eio_client;
         websocket(tcp_base *socket);
 
-        void write_text(std::span<uint8_t> data);
-        void write_binary(std::span<uint8_t> data);
+        // Needs up to 14 add'l bytes to encode packet
+        bool write_text(std::span<uint8_t> data);
+        bool write_binary(std::span<uint8_t> data);
 
         size_t read(std::span<uint8_t> data);
         uint32_t received_packet_size();
@@ -52,6 +53,6 @@ namespace ws {
         void mask(std::span<uint8_t> data, uint32_t masking_key);
         void tcp_recv_callback();
         void tcp_close_callback();
-        void write_frame(std::span<uint8_t> data, opcodes opcode);
+        bool write_frame(std::span<uint8_t> data, opcodes opcode);
     };
 }

@@ -81,6 +81,13 @@ bool tcp_tls_client::initialized() const {
 }
 
 bool tcp_tls_client::write(std::span<const uint8_t> data) {
+    debug("tcp_tls_client::write data=%p size=%d\n", data.data(), data.size());
+    #if LOG_LEVEL <= LOG_LEVEL_DEBUG
+    for(int i = 0; i < data.size(); i++) {
+        debug_cont("%02x ", data[i]);
+    }
+    #endif
+    debug_cont1("\n");
     cyw43_arch_lwip_begin();
     err_t err = altcp_write(tcp_controlblock, data.data(), data.size(), TCP_WRITE_FLAG_COPY);
     cyw43_arch_lwip_end();

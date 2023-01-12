@@ -7,12 +7,12 @@ ws::websocket::websocket(tcp_base *socket): tcp(socket), user_receive_callback([
     tcp->on_closed(std::bind(&websocket::tcp_close_callback, this));
 }
 
-void ws::websocket::write_text(std::span<uint8_t> data) {
-    write_frame(data, opcodes::text);
+bool ws::websocket::write_text(std::span<uint8_t> data) {
+    return write_frame(data, opcodes::text);
 }
 
-void ws::websocket::write_binary(std::span<uint8_t> data) {
-    write_frame(data, opcodes::binary);
+bool ws::websocket::write_binary(std::span<uint8_t> data) {
+    return write_frame(data, opcodes::binary);
 }
 
 size_t ws::websocket::read(std::span<uint8_t> data) {
@@ -77,35 +77,59 @@ void ws::websocket::tcp_close_callback() {
     user_close_callback();
 }
 
-void ws::websocket::write_frame(std::span<uint8_t> data, opcodes opcode) {
+#define htonll(x) ((((x) & (u64_t)0x00000000000000ffULL) << 56) | \
+                   (((x) & (u64_t)0x000000000000ff00ULL) << 40) | \
+                   (((x) & (u64_t)0x0000000000ff0000ULL) << 24) | \
+                   (((x) & (u64_t)0x00000000ff000000ULL) <<  8) | \
+                   (((x) & (u64_t)0x000000ff00000000ULL) >>  8) | \
+                   (((x) & (u64_t)0x0000ff0000000000ULL) >> 24) | \
+                   (((x) & (u64_t)0x00ff000000000000ULL) >> 40) | \
+                   (((x) & (u64_t)0xff00000000000000ULL) >> 56))
+
+bool ws::websocket::write_frame(std::span<uint8_t> data, opcodes opcode) {
+    for(int i = -14; i < 0; i++) {
+        if(data[i] != ' ') {
+            error1("ws::websocket::write_frame expects 14 extra space bytes before the beginning of the given span!\n");
+            return false;
+        }
+    }
+    debug("websocket::write data=%p size=%d\n", data.data(), data.size());
     uint32_t masking_key;
     size_t olen;
     mbedtls_hardware_poll(nullptr, (uint8_t*)&masking_key, sizeof(masking_key), &olen);
     uint8_t frag_opcode = final_fragment | (uint8_t)opcode;
     uint8_t is_masked_length = masked;
     uint8_t length_field_size = (data.size() > 0xFFFF ? sizeof(uint64_t) : data.size() > 0x7D ? sizeof(uint16_t) : 0);
-    uint8_t frame[2 + sizeof(masking_key) + length_field_size + data.size()];
-    frame[0] = frag_opcode;
+    //uint8_t frame[2 + sizeof(masking_key) + length_field_size + data.size()];
     uint8_t mask_offset = 2;
+    uint16_t length16;
+    uint64_t length64;
     if(data.size() < 0x7E) {
         is_masked_length |= (uint8_t)data.size();
     } else if(data.size() <= 0xFFFF) {
         is_masked_length |= has_length_16;
-        uint16_t size = (uint16_t)data.size();
-        memcpy(frame + 2, &size, sizeof(size));
-        mask_offset += sizeof(size);
+        length16 = htons((uint16_t)data.size());
+        //memcpy(frame + 2, &size, sizeof(size));
+        mask_offset += sizeof(length16);
     } else {
         is_masked_length |= has_length_64;
-        uint64_t size = (uint64_t)data.size();
+        length64 = htonll((uint64_t)data.size());
         // this would pretty much fill up our memory if we tried to send a packet > 64kb...
         // probably shouldn't...
-        memcpy(frame + 2, &size, sizeof(size));
-        mask_offset += sizeof(size);
+        //memcpy(frame + 2, &size, sizeof(size));
+        mask_offset += sizeof(length64);
     }
     uint8_t data_offset = mask_offset + sizeof(masking_key);
-    frame[1] = is_masked_length;
-    memcpy(frame + mask_offset, &masking_key, sizeof(masking_key));
+    data[-data_offset] = frag_opcode;
+    data[-data_offset + 1] = is_masked_length;
+    if((is_masked_length & 0x7F) == has_length_16) {
+        memcpy(data.data() -data_offset + 2, &length16, sizeof(length16));
+    } else if((is_masked_length & 0x7F) == has_length_64) {
+        memcpy(data.data() -data_offset + 2, &length64, sizeof(length64));
+    }
+    memcpy(data.data() - data_offset + mask_offset, &masking_key, sizeof(masking_key));
     mask(data, masking_key);
-    memcpy(frame + data_offset, data.data(), data.size());
-    tcp->write({frame, sizeof(frame)});
+    bool res = tcp->write({data.data() - data_offset, data.size() + data_offset});
+    debug("tcp->write result: %d\n", res);
+    return res;
 }
