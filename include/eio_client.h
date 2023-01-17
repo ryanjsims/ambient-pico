@@ -29,16 +29,19 @@ public:
 
     void on_open(std::function<void()> callback);
     void on_receive(std::function<void()> callback);
-    void on_closed(std::function<void()> callback);
+    void on_closed(std::function<void(err_t)> callback);
 
     void read_initial_packet();
 
 private:
     ws::websocket *socket_;
-    std::function<void()> user_receive_callback, user_close_callback, user_open_callback;
+    std::function<void()> user_receive_callback, user_open_callback;
+    std::function<void(err_t)> user_close_callback;
     std::string sid;
-    int ping_interval, ping_timeout;
+    int ping_interval, ping_timeout, ping_milliseconds;
+    bool open_;
 
     void ws_recv_callback();
-    void ws_close_callback();
+    void ws_poll_callback();
+    void ws_close_callback(err_t reason);
 };

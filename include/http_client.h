@@ -249,6 +249,8 @@ public:
 
     http_client(http_client&&) = default;
 
+    http_client& operator=(http_client&&) = default;
+
     ~http_client() {
         if(tcp)
             delete tcp;
@@ -287,7 +289,7 @@ public:
     tcp_base *release_tcp_client() {
         tcp->on_connected([](){});
         tcp->on_receive([](){});
-        tcp->on_closed([](){});
+        tcp->on_closed([](err_t){});
         tcp_base *to_return = tcp;
         tcp = nullptr;
         return std::move(to_return);
@@ -308,6 +310,7 @@ private:
     std::function<void()> user_response_callback;
 
     bool init() {
+        debug("http_client::init Parsing URL '%s'\n", url_.c_str());
         URL = LUrlParser::ParseURL::parseURL(url_);
         if(!URL.isValid()) {
             error("Invalid URL: %s\n", url_.c_str());
@@ -317,21 +320,29 @@ private:
         host_ = URL.host_;
         if(URL.port_.size() > 0)
             URL.getPort(&port_);
+        debug("http_client::init got host '%s'\n", host_.c_str());
         if(URL.scheme_ == "https" || URL.scheme_ == "wss") {
+            debug1("http_client::init creating new tcp_tls_client\n");
             tcp = new tcp_tls_client();
             if(port_ == -1) {
                 port_ = 443;
             }
         } else {
+            debug1("http_client::init creating new tcp_client\n");
             tcp = new tcp_client();
             if(port_ == -1) {
                 port_ = 80;
             }
         }
+        if(!tcp) {
+            error1("http_client::init failed to create new tcp_client\n");
+            return false;
+        }
         return true;
     }
 
     void send_request() {
+        debug1("http_client::send_request\n");
         response_ready = false;
         current_response = {};
         current_request.add_header("Host", host_);
@@ -348,7 +359,7 @@ private:
             tcp->init();
         }
 
-        if(!tcp->ready()) {
+        if(!tcp->connected()) {
             tcp->on_connected(std::bind(&http_client::tcp_connected_callback, this));
             tcp->connect(host_, port_);
         } else {

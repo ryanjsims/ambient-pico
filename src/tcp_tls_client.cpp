@@ -29,7 +29,7 @@ extern "C" {
 
 tcp_tls_client::tcp_tls_client()
     : port_(0)
-    , connected(false)
+    , connected_(false)
     , initialized_(false)
     , sent_len(0)
     , buffer_len(0)
@@ -37,7 +37,7 @@ tcp_tls_client::tcp_tls_client()
     , remote_addr({0})
     , user_receive_callback([](){})
     , user_connected_callback([](){})
-    , user_closed_callback([](){}) {
+    , user_closed_callback([](err_t){}) {
     if(tls_config == nullptr) {
         debug1("Creating tls_config...\n");
         tls_config = altcp_tls_create_config_client(NULL, 0);
@@ -72,8 +72,8 @@ size_t tcp_tls_client::read(std::span<uint8_t> out) {
     return buffer.get(out);
 }
 
-bool tcp_tls_client::ready() const {
-    return connected;
+bool tcp_tls_client::connected() const {
+    return connected_;
 }
 
 bool tcp_tls_client::initialized() const {
@@ -95,7 +95,7 @@ bool tcp_tls_client::write(std::span<const uint8_t> data) {
     return err == ERR_OK;
 }
 
-err_t tcp_tls_client::close() {
+err_t tcp_tls_client::close(err_t reason) {
     err_t err = ERR_OK;
     if (tcp_controlblock != NULL) {
         debug1("Connection closing...\n");
@@ -112,9 +112,9 @@ err_t tcp_tls_client::close() {
         }
         tcp_controlblock = NULL;
     }
-    connected = false;
+    connected_ = false;
     initialized_ = false;
-    user_closed_callback();
+    user_closed_callback(reason);
     return err;
 }
 
@@ -123,7 +123,6 @@ bool tcp_tls_client::connect(std::string hostname, uint16_t port) {
     debug1("Setting mbedtls hostname...\n");
     mbedtls_ssl_context* ssl_context = (mbedtls_ssl_context*)altcp_tls_context(tcp_controlblock);
     debug("ssl_context = %p\n", ssl_context);
-    sleep_ms(100);
     int code = mbedtls_ssl_set_hostname(ssl_context, hostname.c_str());
     debug("mbedtls_ssl_set_hostname rc = %d\n", code);
 
@@ -134,7 +133,7 @@ bool tcp_tls_client::connect(std::string hostname, uint16_t port) {
         err = connect();
     } else if(err != ERR_INPROGRESS) {
         error("gethostbyname failed with error code %d\n", err);
-        close();
+        close(err);
         return false;
     }
 
@@ -166,9 +165,9 @@ err_t tcp_tls_client::connected_callback(void* arg, altcp_pcb* pcb, err_t err) {
     if(err != ERR_OK) {
         error1("connect failed with error code ");
         tcp_perror(err);
-        return client->close();
+        return client->close(err);
     }
-    client->connected = true;
+    client->connected_ = true;
     client->user_connected_callback();
     return ERR_OK;
 }
@@ -178,7 +177,7 @@ err_t tcp_tls_client::recv_callback(void* arg, altcp_pcb* pcb, pbuf* p, err_t er
     debug1("tcp_tls_client::recv_callback\n");
     if(p == nullptr) {
         // Connection closed
-        return client->close();
+        return client->close(ERR_CLSD);
     }
 
     if(p->tot_len > 0) {
@@ -211,6 +210,8 @@ err_t tcp_tls_client::recv_callback(void* arg, altcp_pcb* pcb, pbuf* p, err_t er
 
 err_t tcp_tls_client::poll_callback(void* arg, altcp_pcb* pcb) {
     trace1("poll_callback\n");
+    tcp_tls_client *client = (tcp_tls_client*)arg;
+    client->user_poll_callback();
     return ERR_OK;
 }
 
@@ -280,6 +281,6 @@ void tcp_tls_client::err_callback(void* arg, err_t err) {
     error1("TCP error: code ");
     tcp_perror(err);
     if (err != ERR_ABRT) {
-        client->close();
+        client->close(err);
     }
 }

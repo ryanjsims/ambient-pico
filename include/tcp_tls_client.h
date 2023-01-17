@@ -17,9 +17,9 @@ public:
     size_t read(std::span<uint8_t> out) override;
     bool write(std::span<const uint8_t> data) override;
     bool connect(std::string host, uint16_t port) override;
-    err_t close() override;
+    err_t close(err_t reason) override;
 
-    bool ready() const override;
+    bool connected() const override;
     bool initialized() const override;
 
     void on_receive(std::function<void()> callback) override {
@@ -30,7 +30,12 @@ public:
         user_connected_callback = callback;
     }
 
-    void on_closed(std::function<void()> callback) override {
+    void on_poll(uint8_t interval_seconds, std::function<void()> callback) {
+        altcp_poll(tcp_controlblock, poll_callback, interval_seconds * 2);
+        user_poll_callback = callback;
+    }
+
+    void on_closed(std::function<void(err_t)> callback) override {
         user_closed_callback = callback;
     }
 
@@ -40,9 +45,10 @@ private:
     circular_buffer<uint8_t> buffer{BUF_SIZE};
     int buffer_len;
     int sent_len;
-    bool connected, initialized_;
+    bool connected_, initialized_;
     uint16_t port_;
-    std::function<void()> user_receive_callback, user_connected_callback, user_closed_callback;
+    std::function<void()> user_receive_callback, user_connected_callback, user_poll_callback;
+    std::function<void(err_t)> user_closed_callback;
 
     bool connect();
     static void dns_callback(const char* name, const ip_addr_t *addr, void* arg);

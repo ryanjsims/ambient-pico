@@ -5,6 +5,8 @@
 
 #include "nlohmann/json.hpp"
 
+#include <pico/stdlib.h>
+
 #include <map>
 #include <memory>
 #include <functional>
@@ -90,6 +92,14 @@ private:
         }
     }
 
+    void disconnect_callback(nlohmann::json body = nlohmann::json::array()) {
+        debug("sio_socket::disconnect_callback\n%s\n", body.dump(4).c_str());
+
+        if(event_handlers.find("disconnect") != event_handlers.end()){
+            event_handlers["disconnect"](body);
+        }
+    }
+
     void event_callback(nlohmann::json array) {
         if(array.size() == 0) {
             error1("Array too small!\n");
@@ -116,35 +126,25 @@ public:
         binary_ack
     };
 
-    sio_client(std::string url, std::map<std::string, std::string> query): http(url), engine(nullptr) {
-        std::string query_string = "?EIO=4&transport=websocket";
+    sio_client(std::string url, std::map<std::string, std::string> query): http(url), raw_url(url), engine(nullptr) {
+        query_string = "?EIO=4&transport=websocket";
         for(std::map<std::string, std::string>::const_iterator iter = query.cbegin(); iter != query.cend(); iter++) {
             query_string += "&" + iter->first + "=" + iter->second;
         }
-        http.on_response([&](){
-            info("Got http response: %d %s\n", http.response().status(), http.response().get_status_text().c_str());
-            
-            if(http.response().status() == 101) {
-                trace1("sio_client: creating engine\n");
-                //http.on_response([](){});
-                engine = new eio_client(http.release_tcp_client());
-                trace1("sio_client: engine created\n");
-                if(!engine) {
-                    error1("Engine is nullptr\n");
-                    return;
-                }
-                engine->on_open([this](){
-                    open = true;
-                });
-                trace1("sio_client: set engine open\n");
-                engine->on_receive(std::bind(&sio_client::engine_recv_callback, this));
-                trace1("sio_client: set engine recv\n");
-                for(auto iter = namespace_connections.begin(); iter != namespace_connections.end(); iter++) {
-                    iter->second->update_engine(engine);
-                }
-                engine->read_initial_packet();
-            }
-        });
+        http.on_response(std::bind(&sio_client::http_response_callback, this));
+    }
+
+    ~sio_client() {
+        for(auto iter = namespace_connections.begin(); iter != namespace_connections.end(); iter++) {
+            iter->second.reset();
+        }
+        if(engine) {
+            delete engine;
+            engine = nullptr;
+        }
+    }
+
+    void open() {
         http.get("/socket.io/" + query_string);
     }
 
@@ -163,7 +163,10 @@ public:
             error1("disconnect: Engine not initialized!\n");
             return;
         }
+        debug("Client disconnecting namespace %s\n", ns.c_str());
         if(namespace_connections.find(ns) != namespace_connections.end()) {
+            namespace_connections[ns]->sid_ = "";
+            namespace_connections[ns]->disconnect_callback({"io client disconnect"});
             namespace_connections[ns].reset();
             namespace_connections.erase(ns);
             sio_packet packet;
@@ -180,15 +183,66 @@ public:
         return namespace_connections[ns];
     }
 
+    void on_open(std::function<void()> callback) {
+        user_open_callback = callback;
+    }
+
     bool ready() {
-        return open;
+        return open_;
+    }
+
+    void reconnect() {
+        debug1("Reconnecting...\n");
+        if(engine != nullptr) {
+            delete engine;
+        }
+        debug1("Creating new http_client\n");
+        http = http_client(raw_url);
+        http.on_response(std::bind(&sio_client::http_response_callback, this));
+        std::function<void()> old_open_callback = user_open_callback;
+        on_open([&, old_open_callback](){
+            for(auto iter = namespace_connections.begin(); iter != namespace_connections.end(); iter++) {
+                this->connect(iter->first);
+            }
+            this->user_open_callback = old_open_callback;
+        });
+        open();
     }
 
 private:
     eio_client *engine;
     http_client http;
     std::map<std::string, std::unique_ptr<sio_socket>> namespace_connections;
-    bool open = false;
+    std::function<void()> user_open_callback;
+    std::function<void(err_t)> user_close_callback;
+    std::string raw_url, query_string;
+    bool open_ = false;
+
+    void http_response_callback() {
+        info("Got http response: %d %s\n", http.response().status(), http.response().get_status_text().c_str());
+        
+        if(http.response().status() == 101) {
+            trace1("sio_client: creating engine\n");
+            engine = new eio_client(http.release_tcp_client());
+            trace1("sio_client: engine created\n");
+            if(!engine) {
+                error1("Engine is nullptr\n");
+                return;
+            }
+            engine->on_open([this](){
+                open_ = true;
+                user_open_callback();
+            });
+            trace1("sio_client: set engine open\n");
+            engine->on_receive(std::bind(&sio_client::engine_recv_callback, this));
+            engine->on_closed(std::bind(&sio_client::engine_closed_callback, this, std::placeholders::_1));
+            trace1("sio_client: set engine recv\n");
+            for(auto iter = namespace_connections.begin(); iter != namespace_connections.end(); iter++) {
+                iter->second->update_engine(engine);
+            }
+            engine->read_initial_packet();
+        }
+    }
 
     void engine_recv_callback() {
         debug1("sio_client::engine_recv_callback\n");
@@ -225,6 +279,15 @@ private:
             namespace_connections[ns]->connect_callback(body);
             break;
         }
+
+        case packet_type::disconnect:
+            debug("Server disconnecting namespace %s\n", ns.c_str());
+            if(namespace_connections.find(ns) != namespace_connections.end()){
+                namespace_connections[ns]->sid_ = "";
+                namespace_connections[ns]->disconnect_callback({"io server disconnect"});
+            }
+            break;
+
         case packet_type::event:
             if((tok_start = data.find_first_of("[")) != std::string::npos) {
                 tok_end = data.find_last_of("]");
@@ -235,5 +298,41 @@ private:
             }
             break;
         }
+    }
+
+    void engine_closed_callback(err_t reason) {
+        nlohmann::json disconnect_reason = nlohmann::json::array();
+        if(reason == ERR_CLSD) {
+            disconnect_reason.push_back("transport close");
+        } else if(reason == ERR_TIMEOUT) {
+            disconnect_reason.push_back("ping timeout");
+        } else {
+            disconnect_reason.push_back("transport error");
+        }
+        for(auto iter = namespace_connections.begin(); iter != namespace_connections.end(); iter++) {
+            iter->second->sid_ = "";
+            iter->second->disconnect_callback(disconnect_reason);
+        }
+        delete engine;
+        engine = nullptr;
+        for(auto iter = namespace_connections.begin(); iter != namespace_connections.end(); iter++) {
+            iter->second->update_engine(engine);
+        }
+
+        // Try to reconnect in 1000ms
+        alarm_id_t id = add_alarm_in_ms(1000, sio_client::reconnect_callback, this, false);
+        info("Scheduled reconnect (alarm id %d) in 1 second\n", id);
+    }
+
+    static int64_t reconnect_callback(alarm_id_t id, void *user_data) {
+        debug("sio_client::reconnect_callback for client %p\n", user_data);
+        sio_client* client = (sio_client*)user_data;
+        if(!client) {
+            error1("sio_client::reconnect_callback user_data was a nullptr!");
+            return 0;
+        }
+        client->reconnect();
+        // Can return a value here in us to fire in the future
+        return 0;
     }
 };

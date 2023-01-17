@@ -2,9 +2,13 @@
 
 #include "lwip/ip_addr.h"
 
-ws::websocket::websocket(tcp_base *socket): tcp(socket), user_receive_callback([](){}), user_close_callback([](){}) {
+ws::websocket::websocket(tcp_base *socket): tcp(socket), user_receive_callback([](){}), user_close_callback([](err_t){}) {
     tcp->on_receive(std::bind(&websocket::tcp_recv_callback, this));
-    tcp->on_closed(std::bind(&websocket::tcp_close_callback, this));
+    tcp->on_closed(std::bind(&websocket::tcp_close_callback, this, std::placeholders::_1));
+}
+
+ws::websocket::~websocket() {
+    delete tcp;
 }
 
 bool ws::websocket::write_text(std::span<uint8_t> data) {
@@ -13,6 +17,14 @@ bool ws::websocket::write_text(std::span<uint8_t> data) {
 
 bool ws::websocket::write_binary(std::span<uint8_t> data) {
     return write_frame(data, opcodes::binary);
+}
+
+void ws::websocket::close(err_t reason) {
+    tcp->close(reason);
+}
+
+bool ws::websocket::connected() {
+    return tcp->connected();
 }
 
 size_t ws::websocket::read(std::span<uint8_t> data) {
@@ -27,7 +39,12 @@ void ws::websocket::on_receive(std::function<void()> callback) {
     user_receive_callback = callback;
 }
 
-void ws::websocket::on_closed(std::function<void()> callback) {
+void ws::websocket::on_poll(uint8_t interval_seconds, std::function<void()> callback) {
+    tcp->on_poll(interval_seconds, std::bind(&websocket::tcp_poll_callback, this));
+    user_poll_callback = callback;
+}
+
+void ws::websocket::on_closed(std::function<void(err_t)> callback) {
     user_close_callback = callback;
 }
 
@@ -68,13 +85,24 @@ void ws::websocket::tcp_recv_callback() {
     case opcodes::text:
         user_receive_callback();
         break;
+    case opcodes::close:{
+        debug1("ws::websocket::tcp_recv_callback: Got close frame\n");
+        std::string data(' ', 14);
+        write_frame({(uint8_t*)data.data() + 14, data.size() - 14}, opcodes::close);
+        tcp->close(ERR_CLSD);
+        break;
+    }
     default:
         break;
     }
 }
 
-void ws::websocket::tcp_close_callback() {
-    user_close_callback();
+void ws::websocket::tcp_poll_callback() {
+    user_poll_callback();
+}
+
+void ws::websocket::tcp_close_callback(err_t reason) {
+    user_close_callback(reason);
 }
 
 #define htonll(x) ((((x) & (u64_t)0x00000000000000ffULL) << 56) | \

@@ -8,7 +8,7 @@
 
 tcp_client::tcp_client()
     : port_(0)
-    , connected(false)
+    , connected_(false)
     , initialized_(false)
     , sent_len(0)
     , buffer_len(0)
@@ -16,7 +16,7 @@ tcp_client::tcp_client()
     , remote_addr({0})
     , user_receive_callback([](){})
     , user_connected_callback([](){})
-    , user_closed_callback([](){})
+    , user_closed_callback([](err_t){})
 {
     info1("Initializing DNS...\n");
     dns_init();
@@ -29,6 +29,7 @@ tcp_client::tcp_client()
 }
 
 bool tcp_client::init() {
+    debug1("Initializing tcp_client\n");
     if(tcp_controlblock != nullptr) {
         error1("tcp_controlblock != null!\n");
         return false;
@@ -62,8 +63,8 @@ bool tcp_client::write(std::span<const uint8_t> data) {
     return err == ERR_OK;
 }
 
-bool tcp_client::ready() const {
-    return connected;
+bool tcp_client::connected() const {
+    return connected_;
 }
 
 bool tcp_client::initialized() const {
@@ -71,6 +72,7 @@ bool tcp_client::initialized() const {
 }
 
 bool tcp_client::connect(ip_addr_t addr, uint16_t port) {
+    debug("tcp_client::connect to %s:%d\n", ip4addr_ntoa(&addr), port);
     remote_addr = addr;
     port_ = port;
 
@@ -78,6 +80,7 @@ bool tcp_client::connect(ip_addr_t addr, uint16_t port) {
 }
 
 bool tcp_client::connect(std::string addr, uint16_t port) {
+    debug("tcp_client::connect to %s:%d\n", addr.c_str(), port);
     err_t err = dns_gethostbyname(addr.c_str(), &remote_addr, dns_callback, this);
     port_ = port;
     if(err == ERR_OK) {
@@ -85,7 +88,7 @@ bool tcp_client::connect(std::string addr, uint16_t port) {
         err = connect();
     } else if(err != ERR_INPROGRESS) {
         error("gethostbyname failed with error code %d\n", err);
-        close();
+        close(err);
         return false;
     }
 
@@ -100,7 +103,7 @@ bool tcp_client::connect() {
     return err == ERR_OK;
 }
 
-err_t tcp_client::close() {
+err_t tcp_client::close(err_t reason) {
     err_t err = ERR_OK;
     if (tcp_controlblock != NULL) {
         info1("Connection closing...\n");
@@ -117,10 +120,15 @@ err_t tcp_client::close() {
         }
         tcp_controlblock = NULL;
     }
-    connected = false;
+    connected_ = false;
     initialized_ = false;
-    user_closed_callback();
+    user_closed_callback(reason);
     return err;
+}
+
+void tcp_client::on_poll(uint8_t interval_seconds, std::function<void()> callback) {
+    tcp_poll(tcp_controlblock, poll_callback, interval_seconds * 2);
+    user_poll_callback = callback;
 }
 
 void tcp_client::dns_callback(const char* name, const ip_addr_t *addr, void* arg) {
@@ -135,8 +143,9 @@ void tcp_client::dns_callback(const char* name, const ip_addr_t *addr, void* arg
 }
 
 err_t tcp_client::poll_callback(void* arg, tcp_pcb* pcb) {
-    tcp_client *client = (tcp_client*)arg;
     debug1("poll_callback\n");
+    tcp_client *client = (tcp_client*)arg;
+    client->user_poll_callback();
     return ERR_OK;
 }
 
@@ -151,7 +160,7 @@ err_t tcp_client::recv_callback(void* arg, tcp_pcb* pcb, pbuf* p, err_t err) {
     info1("recv_callback\n");
     if(p == nullptr) {
         // Connection closed
-        return client->close();
+        return client->close(ERR_CLSD);
     }
 
     if(p->tot_len > 0) {
@@ -233,19 +242,19 @@ void tcp_client::err_callback(void* arg, err_t err) {
     error1("TCP error: code ");
     tcp_perror(err);
     if (err != ERR_ABRT) {
-        client->close();
+        client->close(err);
     }
 }
 
 err_t tcp_client::connected_callback(void* arg, tcp_pcb* pcb, err_t err) {
     tcp_client *client = (tcp_client*)arg;
-    info1("connected_callback\n");
+    info1("tcp_client::connected_callback\n");
     if(err != ERR_OK) {
         error1("connect failed with error code ");
         tcp_perror(err);
-        return client->close();
+        return client->close(err);
     }
-    client->connected = true;
+    client->connected_ = true;
     client->user_connected_callback();
     return ERR_OK;
 }
