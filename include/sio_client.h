@@ -197,6 +197,7 @@ public:
             delete engine;
         }
         debug1("Creating new http_client\n");
+        sleep_ms(100);
         http = http_client(raw_url);
         http.on_response(std::bind(&sio_client::http_response_callback, this));
         std::function<void()> old_open_callback = user_open_callback;
@@ -207,6 +208,12 @@ public:
             this->user_open_callback = old_open_callback;
         });
         open();
+    }
+
+    void set_refresh_watchdog() {
+        if(engine) {
+            engine->set_refresh_watchdog();
+        }
     }
 
 private:

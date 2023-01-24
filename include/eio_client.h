@@ -32,6 +32,7 @@ public:
     void on_closed(std::function<void(err_t)> callback);
 
     void read_initial_packet();
+    void set_refresh_watchdog();
 
 private:
     ws::websocket *socket_;
@@ -39,7 +40,7 @@ private:
     std::function<void(err_t)> user_close_callback;
     std::string sid;
     int ping_interval, ping_timeout, ping_milliseconds;
-    bool open_;
+    bool open_, refresh_watchdog_;
 
     void ws_recv_callback();
     void ws_poll_callback();

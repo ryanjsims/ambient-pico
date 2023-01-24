@@ -29,14 +29,14 @@ private:
     std::string payload;
 };
 
-eio_client::eio_client(ws::websocket *socket): socket_(socket), ping_milliseconds(0), open_(false) {
+eio_client::eio_client(ws::websocket *socket): socket_(socket), ping_milliseconds(0), open_(false), refresh_watchdog_(false) {
     trace1("eio_client (ctor)\n");
     socket_->on_receive(std::bind(&eio_client::ws_recv_callback, this));
     socket_->on_poll(1, std::bind(&eio_client::ws_poll_callback, this));
     socket_->on_closed(std::bind(&eio_client::ws_close_callback, this, std::placeholders::_1));
 }
 
-eio_client::eio_client(tcp_base *socket): ping_milliseconds(0), open_(false) {
+eio_client::eio_client(tcp_base *socket): ping_milliseconds(0), open_(false), refresh_watchdog_(false) {
     trace1("eio_client (ctor)\n");
     socket_ = new ws::websocket(socket);
     socket_->on_receive(std::bind(&eio_client::ws_recv_callback, this));
@@ -79,6 +79,11 @@ void eio_client::on_open(std::function<void()> callback) {
 void eio_client::read_initial_packet() {
     debug1("Engine reading initial packet...\n");
     socket_->tcp_recv_callback();
+    set_refresh_watchdog();
+}
+
+void eio_client::set_refresh_watchdog() {
+    refresh_watchdog_ = true;
 }
 
 void eio_client::ws_recv_callback() {
@@ -132,7 +137,10 @@ void eio_client::ws_recv_callback() {
 
 void eio_client::ws_poll_callback() {
     debug1("eio_client::ws_poll_callback\n");
-    watchdog_update();
+    if(refresh_watchdog_) {
+        debug1("refreshed watchdog\n");
+        watchdog_update();
+    }
     if(open_) {
         ping_milliseconds += 1000;
         if(ping_milliseconds > ping_interval + ping_timeout) {
