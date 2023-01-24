@@ -26,6 +26,9 @@
 #define MAX7219_REG_SCANLIMIT 0xB
 #define MAX7219_REG_SHUTDOWN  0xC
 
+#define INTENSITY             0x07
+#define DECMODE               0x0F
+#define SCANLIMIT             0x03
 
 static inline void cs_select() {
     asm volatile("nop \n nop \n nop");
@@ -44,5 +47,10 @@ void max7219_write_reg(uint8_t addr, uint8_t data);
 // Initializes SPI and writes startup data to max7219
 void max7219_init();
 
+// Ensures the chip is on and that the values for intensity, decmode and scanlimit are set
+void max7219_ensure_init();
+
 // Writes 4 digits of a float (hundreds, tens, ones, and tenths) to lower 4 digits of max7219
 void max7219_write(float num);
+
+void max7219_set_brightness(float percent);

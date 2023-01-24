@@ -18,16 +18,23 @@ void max7219_init() {
     // Chip select is active-low, so we'll initialise it to a driven-high state
     gpio_init(MAX7219_LOAD_GPIO);
     gpio_set_dir(MAX7219_LOAD_GPIO, GPIO_OUT);
-    gpio_put(MAX7219_LOAD_GPIO, 1);
+    sleep_ms(10);
 
     max7219_write_reg(MAX7219_REG_SHUTDOWN, 0x01);
-    max7219_write_reg(MAX7219_REG_INTENSITY, 0x07);
-    max7219_write_reg(MAX7219_REG_SCANLIMIT, 0x03);
+    max7219_write_reg(MAX7219_REG_INTENSITY, INTENSITY);
+    max7219_write_reg(MAX7219_REG_SCANLIMIT, SCANLIMIT);
     max7219_write_reg(MAX7219_REG_DECMODE, 0x00);
     max7219_write_reg(MAX7219_REG_DIGIT0, 0x00);
     max7219_write_reg(MAX7219_REG_DIGIT1, 0x00);
     max7219_write_reg(MAX7219_REG_DIGIT2, 0x00);
     max7219_write_reg(MAX7219_REG_DIGIT3, 0x00);
+}
+
+void max7219_ensure_init() {
+    max7219_write_reg(MAX7219_REG_SHUTDOWN, 0x01);
+    max7219_write_reg(MAX7219_REG_INTENSITY, INTENSITY);
+    max7219_write_reg(MAX7219_REG_SCANLIMIT, SCANLIMIT);
+    max7219_write_reg(MAX7219_REG_DECMODE, DECMODE);
 }
 
 void max7219_write(float num) {
@@ -42,4 +49,15 @@ void max7219_write(float num) {
         }
         max7219_write_reg(MAX7219_REG_DIGIT0 + i, digit);
     }
+}
+
+void max7219_set_brightness(float percent) {
+    if(percent < 0) {
+        percent = 0;
+    }
+    if(percent > 1) {
+        percent = 1;
+    }
+
+    max7219_write_reg(MAX7219_REG_INTENSITY, 0x0F * percent);
 }
