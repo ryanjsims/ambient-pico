@@ -12,8 +12,6 @@
 
 #include "lwip/netif.h"
 
-//#define LOG_LEVEL LOG_LEVEL_INFO
-
 #include "logger.h"
 #include "sio_client.h"
 #include "max7219.h"
@@ -148,8 +146,23 @@ void run_anim() {
     }
 }
 
+volatile int alarms_fired = 0;
+
+int64_t alarm_callback(alarm_id_t id, void* user_data) {
+    debug1("timer: refreshed watchdog\n");
+    watchdog_update();
+    if(alarms_fired < 2) {
+        alarms_fired = alarms_fired + 1;
+        // Reschedule the alarm for 7.33 seconds from now 3 times (gives the sio client 30 seconds to connect before reset)
+        return 7333333ll;
+    }
+    return 0;
+}
+
 int main() {
     stdio_init_all();
+    sleep_ms(10);
+    
     max7219_init();
     multicore_reset_core1();
     multicore_launch_core1(run_anim);
@@ -166,8 +179,9 @@ int main() {
         pwm_set_gpio_level(i, 0xffffu);
     }
     pwm_set_mask_enabled((1 << pwm_gpio_to_slice_num(RED_GPIO)) | (1 << pwm_gpio_to_slice_num(GREEN_GPIO)) | (1 << pwm_gpio_to_slice_num(BLUE_GPIO)));
-
-    sleep_ms(5000);
+    pwm_set_gpio_level(BLUE_GPIO, 0xFFFFu);
+    pwm_set_gpio_level(RED_GPIO, 0xFFFFu);
+    pwm_set_gpio_level(GREEN_GPIO, 0xFFFFu);
 
     cyw43_arch_init_with_country(CYW43_COUNTRY_USA);    
 
@@ -202,7 +216,11 @@ int main() {
     info1("Connecting to ambientweather...\n");
     sio_client client("https://rt2.ambientweather.net/", {{"api", "1"}, {"applicationKey", AMBIENT_WEATHER_APP_KEY}});
     
-    client.on_open([&client](){
+    alarm_id_t watchdog_extender = 0;
+    client.on_open([&client, &watchdog_extender](){
+        if(watchdog_extender) {
+            cancel_alarm(watchdog_extender);
+        }
         client.connect();
     });
     debug1("set client open handler\n");
@@ -210,7 +228,9 @@ int main() {
     client.socket()->on("subscribed", [](nlohmann::json body){
         info("Subscribed:\n%s\n", body[0].dump(4).c_str());
         stop_anim = true;
-        max7219_write_reg(MAX7219_REG_DECMODE, 0x0F);
+        // Wait for animation to end
+        sleep_us(5100);
+        max7219_ensure_init();
         max7219_write(body[0]["devices"][0]["lastData"]["tempf"]);
     });
     debug1("set socket subscribed handler\n");
@@ -223,8 +243,6 @@ int main() {
 
     client.socket()->on("connect", [&client](nlohmann::json args){
         info1("connect handler called\n");
-        info1("Setting up watchdog...\n");
-        watchdog_enable(8000000, true);
         pwm_set_gpio_level(BLUE_GPIO, 0x8000u);
         pwm_set_gpio_level(RED_GPIO, 0xFFFFu);
         pwm_set_gpio_level(GREEN_GPIO, 0x8000u);
@@ -247,6 +265,10 @@ int main() {
     });
     debug1("set socket disconnect handler\n");
     
+    info1("Setting up watchdog...\n");
+    watchdog_enable(8000000, true);
+    info1("Setting up alarm to extend watchdog to 30 seconds\n");
+    add_alarm_in_us(7333333ull, alarm_callback, NULL, false);
     debug1("opening socket.io connection...\n");
     client.open();
     debug1("done\n");
