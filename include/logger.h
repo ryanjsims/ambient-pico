@@ -1,4 +1,5 @@
 #pragma once
+#include <pico/time.h>
 
 #define LOG_LEVEL_TRACE    0
 #define LOG_LEVEL_DEBUG    1
@@ -13,8 +14,8 @@
 #endif
 
 #if LOG_LEVEL<=0
-#define trace(message, ...) printf("[trace] " message, __VA_ARGS__)
-#define trace1(message) printf("[trace] " message)
+#define trace(message, ...) printf("[trace %d] " message, to_ms_since_boot(get_absolute_time()), __VA_ARGS__)
+#define trace1(message) printf("[trace %d] " message, to_ms_since_boot(get_absolute_time()))
 #define trace_cont(message, ...) printf(message, __VA_ARGS__)
 #define trace_cont1(message) printf(message)
 #else
@@ -25,8 +26,8 @@
 #endif
 
 #if LOG_LEVEL<=1
-#define debug(message, ...) printf("[debug] " message, __VA_ARGS__)
-#define debug1(message) printf("[debug] " message)
+#define debug(message, ...) printf("[debug %d] " message, to_ms_since_boot(get_absolute_time()), __VA_ARGS__)
+#define debug1(message) printf("[debug %d] " message, to_ms_since_boot(get_absolute_time()))
 #define debug_cont(message, ...) printf(message, __VA_ARGS__)
 #define debug_cont1(message) printf(message)
 #else
@@ -37,8 +38,8 @@
 #endif
 
 #if LOG_LEVEL<=2
-#define info(message, ...) printf("[info] " message, __VA_ARGS__)
-#define info1(message) printf("[info] " message)
+#define info(message, ...) printf("[info %d] " message, to_ms_since_boot(get_absolute_time()), __VA_ARGS__)
+#define info1(message) printf("[info %d] " message, to_ms_since_boot(get_absolute_time()))
 #define info_cont(message, ...) printf(message, __VA_ARGS__)
 #define info_cont1(message) printf(message)
 #else
@@ -49,8 +50,8 @@
 #endif
 
 #if LOG_LEVEL<=3
-#define warn(message, ...) printf("[warn] " message, __VA_ARGS__)
-#define warn1(message) printf("[warn] " message)
+#define warn(message, ...) printf("[warn %d] " message, to_ms_since_boot(get_absolute_time()), __VA_ARGS__)
+#define warn1(message) printf("[warn %d] " message, to_ms_since_boot(get_absolute_time()))
 #define warn_cont(message, ...) printf(message, __VA_ARGS__)
 #define warn_cont1(message) printf(message)
 #else
@@ -61,8 +62,8 @@
 #endif
 
 #if LOG_LEVEL<=4
-#define critical(message, ...) printf("[critical] " message, __VA_ARGS__)
-#define critical1(message) printf("[critical] " message)
+#define critical(message, ...) printf("[critical %d] " message, to_ms_since_boot(get_absolute_time()), __VA_ARGS__)
+#define critical1(message) printf("[critical %d] " message, to_ms_since_boot(get_absolute_time()))
 #define critical_cont(message, ...) printf(message, __VA_ARGS__)
 #define critical_cont1(message) printf(message)
 #else
@@ -73,8 +74,8 @@
 #endif
 
 #if LOG_LEVEL<=5
-#define error(message, ...) printf("[error] " message, __VA_ARGS__)
-#define error1(message) printf("[error] " message)
+#define error(message, ...) printf("[error %d] " message, to_ms_since_boot(get_absolute_time()), __VA_ARGS__)
+#define error1(message) printf("[error %d] " message, to_ms_since_boot(get_absolute_time()))
 #define error_cont(message, ...) printf(message, __VA_ARGS__)
 #define error_cont1(message) printf(message)
 #else
