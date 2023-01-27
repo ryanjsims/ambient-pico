@@ -37,7 +37,7 @@ void max7219_ensure_init() {
     max7219_write_reg(MAX7219_REG_DECMODE, DECMODE);
 }
 
-void max7219_write(float num) {
+void max7219_write(float num, int offset) {
     int value = (int)(num * 10);
     for(int i = 0; i < 4; i++) {
         uint8_t digit = ((int)(value / pow(10, i))) % 10;
@@ -47,7 +47,7 @@ void max7219_write(float num) {
         if(num < 100.0f && i == 3 || num < 10.0f && i >= 2) {
             digit = 0x0F;
         }
-        max7219_write_reg(MAX7219_REG_DIGIT0 + i, digit);
+        max7219_write_reg(MAX7219_REG_DIGIT0 + i + offset, digit);
     }
 }
 

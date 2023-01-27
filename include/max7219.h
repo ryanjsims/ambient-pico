@@ -27,8 +27,8 @@
 #define MAX7219_REG_SHUTDOWN  0xC
 
 #define INTENSITY             0x07
-#define DECMODE               0x0F
-#define SCANLIMIT             0x03
+#define DECMODE               0xFF
+#define SCANLIMIT             0x07
 
 static inline void cs_select() {
     asm volatile("nop \n nop \n nop");
@@ -50,7 +50,7 @@ void max7219_init();
 // Ensures the chip is on and that the values for intensity, decmode and scanlimit are set
 void max7219_ensure_init();
 
-// Writes 4 digits of a float (hundreds, tens, ones, and tenths) to lower 4 digits of max7219
-void max7219_write(float num);
+// Writes 4 digits of a float (hundreds, tens, ones, and tenths) to 4 digits of max7219 (offset 0 - lower, offset 4 - upper)
+void max7219_write(float num, int offset = 0);
 
 void max7219_set_brightness(float percent);

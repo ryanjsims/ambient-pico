@@ -132,6 +132,10 @@ void draw_frame(int idx) {
 bool stop_anim = false;
 
 void run_anim() {
+    max7219_write_reg(MAX7219_REG_DIGIT7, 0b01001110); // C
+    max7219_write_reg(MAX7219_REG_DIGIT6, 0b00011101); // o
+    max7219_write_reg(MAX7219_REG_DIGIT5, 0b00010101); // n
+    max7219_write_reg(MAX7219_REG_DIGIT4, 0b00010101); // n
     int frame = 0;
     absolute_time_t next_frame = make_timeout_time_ms(20);
     while(!stop_anim) {
@@ -232,12 +236,14 @@ int main() {
         sleep_us(5100);
         max7219_ensure_init();
         max7219_write(body[0]["devices"][0]["lastData"]["tempf"]);
+        max7219_write(body[0]["devices"][0]["lastData"]["temp1f"], 4);
     });
     debug1("set socket subscribed handler\n");
 
     client.socket()->on("data", [](nlohmann::json body){
         info("Data:\n%s\n", body[0].dump(4).c_str());
         max7219_write(body[0]["tempf"]);
+        max7219_write(body[0]["temp1f"], 4);
     });
     debug1("set socket data handler\n");
 
