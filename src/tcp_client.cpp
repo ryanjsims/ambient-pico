@@ -157,7 +157,7 @@ err_t tcp_client::sent_callback(void* arg, tcp_pcb* pcb, u16_t len) {
 
 err_t tcp_client::recv_callback(void* arg, tcp_pcb* pcb, pbuf* p, err_t err) {
     tcp_client *client = (tcp_client*)arg;
-    info1("recv_callback\n");
+    info1("tcp_client::recv_callback\n");
     if(p == nullptr) {
         // Connection closed
         return client->close(ERR_CLSD);

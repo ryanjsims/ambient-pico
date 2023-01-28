@@ -2,11 +2,8 @@
 #include <pico/stdlib.h>
 #include <pico/multicore.h>
 #include <pico/cyw43_arch.h>
-#include <pico/binary_info.h>
 #include <hardware/gpio.h>
 #include <hardware/pwm.h>
-#include <hardware/spi.h>
-#include <hardware/watchdog.h>
 #include <string_view>
 #include "nlohmann/json.hpp"
 
@@ -150,19 +147,6 @@ void run_anim() {
     }
 }
 
-volatile int alarms_fired = 0;
-
-int64_t alarm_callback(alarm_id_t id, void* user_data) {
-    debug1("timer: refreshed watchdog\n");
-    watchdog_update();
-    if(alarms_fired < 2) {
-        alarms_fired = alarms_fired + 1;
-        // Reschedule the alarm for 7.33 seconds from now 3 times (gives the sio client 30 seconds to connect before reset)
-        return 7333333ll;
-    }
-    return 0;
-}
-
 int main() {
     stdio_init_all();
     sleep_ms(10);
@@ -198,7 +182,7 @@ int main() {
     int err = cyw43_arch_wifi_connect_async(WIFI_SSID, WIFI_PASSWORD, CYW43_AUTH_WPA2_AES_PSK);
     int status = CYW43_LINK_UP + 1;
 
-    while(!(netif_is_link_up(netif_default) && netif_ip4_addr(netif_default))){
+    while(!(netif_is_link_up(netif_default) && netif_ip4_addr(netif_default)->addr != 0)){
         if(err || status < 0) {
             if(err) {
                 error("failed to start wifi scan (code %d).\n", err);
@@ -218,13 +202,14 @@ int main() {
     }
 
     info1("Connecting to ambientweather...\n");
+    const ip4_addr_t *address = netif_ip4_addr(netif_default);
+    info("My IP Address is %d.%d.%d.%d\n", ip4_addr1(address), ip4_addr2(address), ip4_addr3(address), ip4_addr4(address));
     sio_client client("https://rt2.ambientweather.net/", {{"api", "1"}, {"applicationKey", AMBIENT_WEATHER_APP_KEY}});
+    //sio_client client("http://192.168.0.13:8000/", {{"api", "1"}, {"applicationKey", AMBIENT_WEATHER_APP_KEY}});
+
     
-    alarm_id_t watchdog_extender = 0;
-    client.on_open([&client, &watchdog_extender](){
-        if(watchdog_extender) {
-            cancel_alarm(watchdog_extender);
-        }
+    client.on_open([&client](){
+        info1("User open callback\n");
         client.connect();
     });
     debug1("set client open handler\n");
@@ -271,17 +256,7 @@ int main() {
     });
     debug1("set socket disconnect handler\n");
     
-    info1("Setting up watchdog...\n");
-    watchdog_enable(8000000, true);
-    info1("Setting up alarm to extend watchdog to 30 seconds\n");
-    add_alarm_in_us(7333333ull, alarm_callback, NULL, false);
-    debug1("opening socket.io connection...\n");
-    client.open();
-    debug1("done\n");
-
-    while(true) {
-        sleep_ms(1000);
-    }
+    client.run();
     cyw43_arch_deinit();
     return 0;
 }

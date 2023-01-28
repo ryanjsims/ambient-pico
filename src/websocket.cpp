@@ -62,6 +62,7 @@ void ws::websocket::tcp_recv_callback() {
     uint8_t frame_header[2];
     tcp->read({frame_header, 2});
     packet_size = frame_header[1] & 0x7F;
+    debug("Header: %02x %02x\n", frame_header[0], frame_header[1]);
     debug("Header packet size: %x\n", packet_size);
     if(packet_size == 0x7E) {
         uint16_t temp;
@@ -74,7 +75,7 @@ void ws::websocket::tcp_recv_callback() {
         packet_size = ntohl(packet_size);
     }
     debug("ws::websocket::tcp_recv_callback: Got size %u (0x%08x)\n", packet_size, packet_size);
-    switch(opcodes(frame_header[0] & 0x07)) {
+    switch(opcodes(frame_header[0] & 0x0F)) {
     case opcodes::ping:
         // Client should never receive a ping
         break;
