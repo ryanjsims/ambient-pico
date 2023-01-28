@@ -6,6 +6,7 @@
 #include "nlohmann/json.hpp"
 
 #include <pico/stdlib.h>
+#include <hardware/watchdog.h>
 
 #include <map>
 #include <memory>
@@ -114,6 +115,10 @@ private:
     }
 };
 
+extern volatile int alarms_fired;
+
+int64_t alarm_callback(alarm_id_t id, void* user_data);
+
 class sio_client {
 public:
     enum class packet_type: uint8_t {
@@ -126,12 +131,17 @@ public:
         binary_ack
     };
 
-    sio_client(std::string url, std::map<std::string, std::string> query): http(url), raw_url(url), engine(nullptr) {
+    sio_client(std::string url, std::map<std::string, std::string> query)
+        : raw_url(url)
+        , engine(nullptr)
+        , reconnect_time(nil_time)
+    {
+        http = new http_client(url);
         query_string = "?EIO=4&transport=websocket";
         for(std::map<std::string, std::string>::const_iterator iter = query.cbegin(); iter != query.cend(); iter++) {
             query_string += "&" + iter->first + "=" + iter->second;
         }
-        http.on_response(std::bind(&sio_client::http_response_callback, this));
+        http->on_response(std::bind(&sio_client::http_response_callback, this));
     }
 
     ~sio_client() {
@@ -142,10 +152,18 @@ public:
             delete engine;
             engine = nullptr;
         }
+        if(http) {
+            delete http;
+            http = nullptr;
+        }
     }
 
     void open() {
-        http.get("/socket.io/" + query_string);
+        if(!http) {
+            error1("sio_client::open: http_client is nullptr\n");
+            return;
+        }
+        http->get("/socket.io/" + query_string);
     }
 
     void connect(std::string ns = "/") {
@@ -193,13 +211,16 @@ public:
 
     void reconnect() {
         debug1("Reconnecting...\n");
+        reconnect_time = nil_time;
         if(engine != nullptr) {
             delete engine;
         }
+        if(http != nullptr) {
+            delete http;
+        }
         debug1("Creating new http_client\n");
-        sleep_ms(100);
-        http = http_client(raw_url);
-        http.on_response(std::bind(&sio_client::http_response_callback, this));
+        http = new http_client(raw_url);
+        http->on_response(std::bind(&sio_client::http_response_callback, this));
         std::function<void()> old_open_callback = user_open_callback;
         on_open([&, old_open_callback](){
             for(auto iter = namespace_connections.begin(); iter != namespace_connections.end(); iter++) {
@@ -216,21 +237,46 @@ public:
         }
     }
 
+    // Starts the sio_client main loop
+    void run() {
+        info1("Setting up watchdog...\n");
+        watchdog_enable(8000000, true);
+        debug1("Setting up alarm to extend watchdog to 30 seconds\n");
+        watchdog_extender = add_alarm_in_us(7333333ull, alarm_callback, NULL, false);
+        debug1("opening socket.io connection...\n");
+        open();
+        while(true) {
+            if(!is_nil_time(reconnect_time) && time_reached(reconnect_time)) {
+                alarms_fired = 0;
+                watchdog_update();
+                debug1("Setting up alarm to extend watchdog to 30 seconds\n");
+                watchdog_extender = add_alarm_in_us(7333333ull, alarm_callback, NULL, false);
+                this->reconnect();
+            } else {
+                sleep_ms(100);
+            }
+        }
+    }
+
 private:
     eio_client *engine;
-    http_client http;
+    http_client *http;
     std::map<std::string, std::unique_ptr<sio_socket>> namespace_connections;
     std::function<void()> user_open_callback;
     std::function<void(err_t)> user_close_callback;
     std::string raw_url, query_string;
     bool open_ = false;
+    absolute_time_t reconnect_time;
+    alarm_id_t watchdog_extender = 0;
 
     void http_response_callback() {
-        info("Got http response: %d %s\n", http.response().status(), http.response().get_status_text().c_str());
+        info("Got http response: %d %s\n", http->response().status(), http->response().get_status_text().c_str());
         
-        if(http.response().status() == 101) {
+        if(http->response().status() == 101) {
             trace1("sio_client: creating engine\n");
-            engine = new eio_client(http.release_tcp_client());
+            engine = new eio_client(http->release_tcp_client());
+            delete http;
+            http = nullptr;
             trace1("sio_client: engine created\n");
             if(!engine) {
                 error1("Engine is nullptr\n");
@@ -238,6 +284,13 @@ private:
             }
             engine->on_open([this](){
                 open_ = true;
+                if(this->watchdog_extender) {
+                    debug1("Cancelling watchdog extension\n");
+                    cancel_alarm(this->watchdog_extender);
+                    this->watchdog_extender = 0;
+                } else {
+                    debug1("Watchdog extension timer id not set?\n");
+                }
                 user_open_callback();
             });
             trace1("sio_client: set engine open\n");
@@ -326,20 +379,7 @@ private:
             iter->second->update_engine(engine);
         }
 
-        // Try to reconnect in 1000ms
-        alarm_id_t id = add_alarm_in_ms(1000, sio_client::reconnect_callback, this, false);
-        info("Scheduled reconnect (alarm id %d) in 1 second\n", id);
-    }
-
-    static int64_t reconnect_callback(alarm_id_t id, void *user_data) {
-        debug("sio_client::reconnect_callback for client %p\n", user_data);
-        sio_client* client = (sio_client*)user_data;
-        if(!client) {
-            error1("sio_client::reconnect_callback user_data was a nullptr!");
-            return 0;
-        }
-        client->reconnect();
-        // Can return a value here in us to fire in the future
-        return 0;
+        reconnect_time = make_timeout_time_ms(1000);
+        info("Scheduled reconnect for time %lld\n", reconnect_time);
     }
 };

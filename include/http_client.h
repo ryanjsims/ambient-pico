@@ -252,8 +252,10 @@ public:
     http_client& operator=(http_client&&) = default;
 
     ~http_client() {
-        if(tcp)
+        if(tcp) {
             delete tcp;
+        }
+        debug1("~http_client\n");
     }
 
     void get(std::string target) {
@@ -342,27 +344,34 @@ private:
     }
 
     void send_request() {
-        debug1("http_client::send_request\n");
+        debug("http_client::send_request (tcp = %p)\n", tcp);
         response_ready = false;
         current_response = {};
+        trace1("Adding headers\n");
         current_request.add_header("Host", host_);
         current_request.add_header("User-Agent", "pico");
         if(current_request.body_.size() > 0) {
             current_request.add_header("Content-Length", std::to_string(current_request.body_.size()));
         }
+        current_request.add_header("Connection", "Upgrade");
         current_request.add_header("Upgrade", "websocket");
         current_request.add_header("Sec-WebSocket-Key", "8xtVmuvomB2taGWDXBxVMw==");
         current_request.add_header("Sec-WebSocket-Version", "13");
+        trace1("Adding callbacks\n");
         tcp->on_receive(std::bind(&http_client::tcp_recv_callback, this));
         tcp->on_closed(std::bind(&http_client::tcp_closed_callback, this));
+
         if(!tcp->initialized()) {
+            trace1("Initializing TCP\n");
             tcp->init();
         }
 
         if(!tcp->connected()) {
+            trace1("Connecting TCP\n");
             tcp->on_connected(std::bind(&http_client::tcp_connected_callback, this));
             tcp->connect(host_, port_);
         } else {
+            trace1("Already connected\n");
             tcp_connected_callback();
         }
     }

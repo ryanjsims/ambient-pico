@@ -136,9 +136,9 @@ void eio_client::ws_recv_callback() {
 }
 
 void eio_client::ws_poll_callback() {
-    debug1("eio_client::ws_poll_callback\n");
+    trace1("eio_client::ws_poll_callback\n");
     if(refresh_watchdog_) {
-        debug1("refreshed watchdog\n");
+        trace1("refreshed watchdog\n");
         watchdog_update();
     }
     if(open_) {
