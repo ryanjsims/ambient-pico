@@ -150,6 +150,15 @@ void run_anim() {
 int main() {
     stdio_init_all();
     sleep_ms(10);
+
+    if(watchdog_caused_reboot()) {
+        for(int i = 0; i < 3; i++) {
+            cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
+            sleep_ms(250);
+            cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 0);
+            sleep_ms(250);
+        }
+    }
     
     max7219_init();
     multicore_reset_core1();
@@ -233,7 +242,7 @@ int main() {
     debug1("set socket data handler\n");
 
     client.socket()->on("connect", [&client](nlohmann::json args){
-        info1("connect handler called\n");
+        debug1("connect handler called\n");
         pwm_set_gpio_level(BLUE_GPIO, 0x8000u);
         pwm_set_gpio_level(RED_GPIO, 0xFFFFu);
         pwm_set_gpio_level(GREEN_GPIO, 0x8000u);

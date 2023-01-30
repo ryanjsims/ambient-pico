@@ -275,7 +275,7 @@ public:
         send_request();
     }
 
-    bool has_response() {
+    bool has_response() const {
         return response_ready;
     }
 
@@ -297,7 +297,7 @@ public:
         return std::move(to_return);
     }
 
-    LUrlParser::ParseURL get_parsed_url() {
+    LUrlParser::ParseURL get_parsed_url() const {
         return URL;
     }
 

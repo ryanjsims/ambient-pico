@@ -2,6 +2,7 @@
 #include <charconv>
 #include <cstring>
 #include "hardware/watchdog.h"
+#include "nlohmann/json.hpp"
 
 class eio_packet {
 public:
@@ -94,15 +95,10 @@ void eio_client::ws_recv_callback() {
         std::string packet;
         packet.resize(packet_size());
         socket_->read({(uint8_t*)packet.data(), packet.size()});
-        size_t token_start = packet.find("sid") + 6;
-        size_t token_end = packet.find("\"", token_start);
-        sid = packet.substr(token_start, token_end - token_start);
-        token_start = packet.find("pingInterval") + 14;
-        token_end = packet.find_first_of(",}", token_start);
-        std::from_chars(packet.c_str() + token_start, packet.c_str() + token_end, ping_interval);
-        token_start = packet.find("pingTimeout") + 13;
-        token_end = packet.find_first_of(",}", token_start);
-        std::from_chars(packet.c_str() + token_start, packet.c_str() + token_end, ping_timeout);
+        nlohmann::json body = nlohmann::json::parse(packet);
+        sid = body["sid"];
+        ping_interval = body["pingInterval"];
+        ping_timeout = body["pingTimeout"];
         info("EIO Open:\n    sid=%s\n    pingInterval=%d\n    pingTimeout=%d\n", sid.c_str(), ping_interval, ping_timeout);
         open_ = true;
         user_open_callback();
@@ -138,8 +134,8 @@ void eio_client::ws_recv_callback() {
 void eio_client::ws_poll_callback() {
     trace1("eio_client::ws_poll_callback\n");
     if(refresh_watchdog_) {
-        trace1("refreshed watchdog\n");
         watchdog_update();
+        trace1("refreshed watchdog\n");
     }
     if(open_) {
         ping_milliseconds += 1000;

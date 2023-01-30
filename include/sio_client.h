@@ -214,6 +214,7 @@ public:
         reconnect_time = nil_time;
         if(engine != nullptr) {
             delete engine;
+            engine = nullptr;
         }
         if(http != nullptr) {
             delete http;
@@ -380,6 +381,6 @@ private:
         }
 
         reconnect_time = make_timeout_time_ms(1000);
-        info("Scheduled reconnect for time %lld\n", reconnect_time);
+        debug("Scheduled reconnect for time %lld\n", reconnect_time);
     }
 };
