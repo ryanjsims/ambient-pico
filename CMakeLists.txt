@@ -54,6 +54,7 @@ target_link_libraries(pico_matrix PRIVATE
     pico_stdlib
     pico_mem_ops
     pico_multicore
+    pico_rand
     hardware_dma
     hardware_pio
     hardware_pwm
