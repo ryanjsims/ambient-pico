@@ -4,10 +4,8 @@
 #include <hardware/gpio.h>
 #include <hardware/pwm.h>
 #include <time.h>
-#include <list>
-#include <map>
-#include <vector>
 #include <math.h>
+#include <string.h>
 
 #include "rgb_matrix.h"
 
@@ -18,49 +16,42 @@ struct coords {
 
 class TrailMap {
 public:
-    TrailMap() {}
+    TrailMap() {
+        memset(data, 0, 4096);
+    }
 
     uint32_t get(uint8_t x, uint8_t y) {
-        auto found = data.find(combine_pos(x, y));
-        if(found != data.end()) {
-            return found->second;
-        }
-        return 0;
+        return data[combine_pos(x, y)];
     }
 
     void add(uint8_t x, uint8_t y, uint32_t value) {
-        auto found = data.find(combine_pos(x, y));
-        if(found != data.end()) {
-            found->second += value;
-        } else {
-            data[combine_pos(x, y)] = value;
-        }
+        data[combine_pos(x, y)] += value;
     }
 
     void decrement_all() {
-        std::vector<uint16_t> to_remove;
-        for(auto it = data.begin(); it != data.end(); it++) {
+        // std::vector<uint16_t> to_remove;
+        for(int i = 0; i < 4096; i++) {
             uint8_t r, g, b;
-            r = it->second & 0xFF;
-            g = (it->second & 0xFF00) >> 8;
-            b = (it->second & 0xFF0000) >> 16;
+            r = data[i] & 0xFF;
+            g = (data[i] & 0xFF00) >> 8;
+            b = (data[i] & 0xFF0000) >> 16;
             r = r * 0.9;
             g = g * 0.9;
             b = b * 0.9;
-            it->second = r | (((uint16_t)g) << 8) | (((uint32_t)b) << 16);
-            if(it->second == 0) {
-                to_remove.push_back(it->first);
-            }
+            data[i] = r | (((uint16_t)g) << 8) | (((uint32_t)b) << 16);
+            // if(it->second == 0) {
+            //     to_remove.push_back(it->first);
+            // }
         }
-        for(auto it = to_remove.begin(); it != to_remove.end(); it++) {
-            data.erase(*it);
-        }
+        // for(auto it = to_remove.begin(); it != to_remove.end(); it++) {
+        //     data.erase(*it);
+        // }
     }
 private:
-    std::map<uint16_t, uint32_t> data;
+    uint32_t data[4096];
 
     uint16_t combine_pos(uint8_t x, uint8_t y) {
-        return (((uint16_t)x) << 8) | y;
+        return ((uint16_t)y) * 64 + x;
     }
 };
 
