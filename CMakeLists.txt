@@ -65,4 +65,4 @@ pico_enable_stdio_usb(pico_matrix 1)
 pico_enable_stdio_uart(pico_matrix 0)
 pico_add_extra_outputs(pico_matrix)
 
-add_subdirectory(lib/pico-examples/pio/hub75)
+# add_subdirectory(lib/pico-examples/pio/hub75)
