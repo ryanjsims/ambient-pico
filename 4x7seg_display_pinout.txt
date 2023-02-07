@@ -1,0 +1,20 @@
+  12 11 10  9  8  7
+ --    --    --    --  
+|  |  |  |  |  |  |  | 
+ --    --    --    --  
+|  |  |  |  |  |  |  | 
+ -- .  -- .  -- .  -- .
+   1  2  3  4  5  6
+
+ 1 - segment E
+ 2 - segment D
+ 3 - segment DP
+ 4 - segment C
+ 5 - segment G
+ 6 - digit 4 ground
+ 7 - segment B
+ 8 - digit 3 ground
+ 9 - digit 2 ground
+10 - segment F
+11 - segment A
+12 - digit 1 ground
