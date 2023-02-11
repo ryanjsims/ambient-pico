@@ -34,6 +34,11 @@ void rgb_matrix<rows, cols>::start() {
 }
 
 template<uint rows, uint cols>
+uint32_t* rgb_matrix<rows, cols>::ptr() {
+    return &buffers[(display_buffer + 1) % 2][0];
+}
+
+template<uint rows, uint cols>
 void rgb_matrix<rows, cols>::run() {
     while (1) {
         for (int rowsel = 0; rowsel < (1 << ROWSEL_N_PINS); ++rowsel) {

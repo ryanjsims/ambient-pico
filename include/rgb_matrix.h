@@ -41,6 +41,7 @@ public:
     void set_pixel(uint row, uint col, uint32_t color);
     void set_pixel(uint row, uint col, uint8_t r, uint8_t g, uint8_t b);
     uint32_t get_pixel(uint row, uint col);
+    uint32_t *ptr();
 
 private:
     uint32_t buffers[2][rows * cols];
